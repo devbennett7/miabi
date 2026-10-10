@@ -6,6 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAnalyticsStore, ANALYTICS_RANGES } from '@/stores/analytics'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { analyticsApi } from '@/api/analytics'
+import { appApi } from '@/api/apps'
 import { apiUrl } from '@/api/client'
 import { windowLabel } from './timeaxis'
 
@@ -14,7 +15,7 @@ import { windowLabel } from './timeaxis'
 // only renders the report, and it mirrors the range + app selection into the URL
 // query so a reload or shared link restores the same view.
 const store = useAnalyticsStore()
-const { range, appFilter, appIds, appNames, report, live, liveWindowSeconds } = storeToRefs(store)
+const { range, appFilter, appIds, appNames, appHandles, report, live, liveWindowSeconds } = storeToRefs(store)
 const ws = useWorkspaceStore()
 const { currentWorkspaceId } = storeToRefs(ws)
 const route = useRoute()
@@ -45,17 +46,42 @@ const tabs = [
   { name: 'analytics.tab.webAnalytics', to: '/analytics/web', icon: 'mdi-account-group-outline' },
 ]
 
-// Seed the store from ?range=&app= on entry (deep-link / reload), before loading.
-function seedFromQuery() {
-  const r = typeof route.query.range === 'string' ? route.query.range : ''
-  if (r && ANALYTICS_RANGES.some((x) => x.key === r)) store.range = r
-  const a = Number(route.query.app)
-  if (Number.isFinite(a) && a > 0) store.appFilter = a
+// ?range= and ?app= are read here, before the URL mirror below first runs: it would otherwise
+// write the store's default range over the link's. ?app= is an app id or name (app=110, app=gitea).
+const initialRange = typeof route.query.range === 'string' ? route.query.range : ''
+if (initialRange && ANALYTICS_RANGES.some((x) => x.key === initialRange)) store.range = initialRange
+const initialApp = typeof route.query.app === 'string' ? route.query.app.trim() : ''
+// The ?app= value the URL carries for the current filter. A link keeps the form it was opened
+// with; a pick from the filter writes the app's name.
+let appRef = initialApp
+// True while ?app= is still being resolved, so the mirror doesn't drop it in the meantime.
+let seeding = initialApp !== ''
+
+// Seed the app filter from ?app= on entry (deep-link / reload), before loading. A name is
+// resolved to its id first; one that matches no app leaves the view workspace-wide.
+async function seedFromQuery() {
+  try {
+    if (!initialApp) return
+    const id = Number(initialApp)
+    if (Number.isInteger(id) && id > 0) {
+      store.appFilter = id
+      return
+    }
+    const ws = currentWorkspaceId.value
+    if (!ws) return
+    const res = await appApi.get(ws, initialApp)
+    if (res.data.data?.id) store.appFilter = res.data.data.id
+  } catch {
+    // An unknown name: fall through to the workspace-wide view.
+  } finally {
+    seeding = false
+    if (!store.appFilter) mirrorQuery()
+  }
 }
 
 let stopLive: (() => void) | null = null
-onMounted(() => {
-  seedFromQuery()
+onMounted(async () => {
+  await seedFromQuery()
   store.load()
   stopLive = store.watchLive()
 })
@@ -74,18 +100,25 @@ const liveLabel = computed(() => {
 })
 
 // Mirror the current selection into the URL (replace, so it doesn't spam history).
-watch([range, appFilter], () => {
+function mirrorQuery() {
   const query: Record<string, string> = { ...(route.query as Record<string, string>), range: range.value }
-  if (appFilter.value) query.app = String(appFilter.value)
-  else delete query.app
+  if (appFilter.value) {
+    query.app = appRef || String(appFilter.value)
+  } else if (!seeding) {
+    appRef = ''
+    delete query.app
+  }
   if (query.range !== route.query.range || query.app !== route.query.app) {
     router.replace({ query })
   }
-}, { immediate: true })
+}
+watch([range, appFilter], mirrorQuery, { immediate: true })
 
 function onAppChange(e: Event) {
   const v = (e.target as HTMLSelectElement).value
-  store.setApp(v ? Number(v) : null)
+  const id = v ? Number(v) : null
+  appRef = id ? appHandles.value[id] || String(id) : ''
+  store.setApp(id)
 }
 </script>
 

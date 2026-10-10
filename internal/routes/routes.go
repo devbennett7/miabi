@@ -1336,7 +1336,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 			workspaceBundle: handlers.NewWorkspaceBundleHandler(wsBundleService, auditLogger),
 			migration:       handlers.NewLocationMigrationHandler(migrationService, userRepo, ee, auditLogger),
 			monitoring:      handlers.NewMonitoringHandler(monitoringService),
-			analytics:       handlers.NewAnalyticsHandler(repositories.NewAnalyticsRepository(db), ee, analytics.NewLiveTracker(redisClient, time.Duration(cfg.AnalyticsLiveWindowSeconds)*time.Second)),
+			analytics:       handlers.NewAnalyticsHandler(repositories.NewAnalyticsRepository(db), ee, analytics.NewLiveTracker(redisClient, time.Duration(cfg.AnalyticsLiveWindowSeconds)*time.Second), appRepo),
 			inbox:           handlers.NewNotificationInboxHandler(inboxRepo, bus, announcementService),
 			alerts:          handlers.NewAlertHandler(repositories.NewAlertRepository(db)),
 			marketplace:     handlers.NewMarketplaceHandler(marketplaceService, auditLogger),

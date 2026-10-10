@@ -26,6 +26,8 @@ export const useAnalyticsStore = defineStore('analytics', () => {
 
   const appIds = ref<number[]>([])
   const appNames = ref<Record<number, string>>({})
+  // Each app's handle (its name), which the URL carries instead of the id.
+  const appHandles = ref<Record<number, string>>({})
 
   // Live visitors is a "right now" number, so it polls on its own cadence
   // instead of riding the report load. null = not loaded yet (the pill hides).
@@ -47,8 +49,13 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         analyticsApi.apps(ws, range.value),
       ])
       const names: Record<number, string> = {}
-      for (const a of all.data.data ?? []) names[a.id] = a.display_name || a.name
+      const handles: Record<number, string> = {}
+      for (const a of all.data.data ?? []) {
+        names[a.id] = a.display_name || a.name
+        handles[a.id] = a.name
+      }
       appNames.value = names
+      appHandles.value = handles
       appIds.value = withData.data.data?.application_ids ?? []
       if (appFilter.value && !appIds.value.includes(appFilter.value)) appFilter.value = null
     } catch {
@@ -144,7 +151,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
   }
 
   return {
-    range, appFilter, report, loading, error, appIds, appNames,
+    range, appFilter, report, loading, error, appIds, appNames, appHandles,
     live, liveWindowSeconds,
     load, setRange, setApp, loadLive, watchLive,
   }
