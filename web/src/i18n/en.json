@@ -1292,7 +1292,8 @@
     "apps": "no apps | {n} app | {n} apps",
     "configs": "no configs | {n} config | {n} configs",
     "databases": "no databases | {n} database | {n} databases",
-    "volumes": "no volumes | {n} volume | {n} volumes"
+    "volumes": "no volumes | {n} volume | {n} volumes",
+    "secrets": "no secrets | {n} secret | {n} secrets"
   },
   "credentialField": {
     "chooseASecretToContinue": "Choose a secret to continue.",
@@ -3437,7 +3438,21 @@
     "valuePlaceholder": "the secret value\n\nMulti-line values are stored exactly as entered, so a PEM certificate or private key can be pasted whole.",
     "version": "Version",
     "sealed": "Sealed",
-    "sealedHint": "Set from a sealed value in Git (sealing key v{version}). A value set here is replaced at the next apply or sync."
+    "sealedHint": "Set from a sealed value in Git (sealing key v{version}). A value set here is replaced at the next apply or sync.",
+    "editSecret": "Edit secret",
+    "saving": "Saving…",
+    "noSecrets": "No secrets",
+    "noSecretsFound": "No secrets found",
+    "noDescription": "No description provided.",
+    "viewDetails": "View details",
+    "lastUpdated": "Last updated",
+    "sealedTitle": "Sealed in Git",
+    "sealedDetails": "This value comes from a SealedSecret in Git, sealed to workspace key v{version}. Change it by sealing a new value and committing it.",
+    "sealedEditTitle": "This secret is sealed in Git",
+    "sealedEditText": "Saving a new value here unseals it, and the Git source that owns it puts the sealed value back on its next sync. To change it for good, seal the new value and commit it:",
+    "sealedEditDescriptionOnly": "Editing only the description keeps it sealed.",
+    "managedTitle": "Managed by a database",
+    "managedDetails": "Created with its database and rotated or removed from there, so it can't be edited here."
   },
   "security": {
     "codesRemaining": "No recovery codes remaining. | {n} recovery code remaining. | {n} recovery codes remaining.",

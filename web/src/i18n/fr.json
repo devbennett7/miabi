@@ -1292,7 +1292,8 @@
     "apps": "aucune application | {n} application | {n} applications",
     "configs": "aucune configuration | {n} configuration | {n} configurations",
     "databases": "aucune base de données | {n} base de données | {n} bases de données",
-    "volumes": "aucun volume | {n} volume | {n} volumes"
+    "volumes": "aucun volume | {n} volume | {n} volumes",
+    "secrets": "aucun secret | {n} secret | {n} secrets"
   },
   "credentialField": {
     "chooseASecretToContinue": "Choisissez un secret pour continuer.",
@@ -3437,7 +3438,21 @@
     "valuePlaceholder": "la valeur du secret\n\nLes valeurs multilignes sont stockées exactement telles que saisies : un certificat PEM ou une clé privée peut être collé en entier.",
     "version": "Version",
     "sealed": "Scellé",
-    "sealedHint": "Défini par une valeur scellée dans Git (clé de scellement v{version}). Une valeur définie ici est remplacée au prochain apply ou à la prochaine synchronisation."
+    "sealedHint": "Défini par une valeur scellée dans Git (clé de scellement v{version}). Une valeur définie ici est remplacée au prochain apply ou à la prochaine synchronisation.",
+    "editSecret": "Modifier le secret",
+    "saving": "Enregistrement…",
+    "noSecrets": "Aucun secret",
+    "noSecretsFound": "Aucun secret trouvé",
+    "noDescription": "Aucune description.",
+    "viewDetails": "Voir les détails",
+    "lastUpdated": "Dernière mise à jour",
+    "sealedTitle": "Scellé dans Git",
+    "sealedDetails": "Cette valeur provient d'un SealedSecret dans Git, scellé avec la clé v{version} de l'espace de travail. Pour la modifier, scellez une nouvelle valeur et commitez-la.",
+    "sealedEditTitle": "Ce secret est scellé dans Git",
+    "sealedEditText": "Enregistrer une nouvelle valeur ici le descelle, et la source Git qui le possède remet la valeur scellée à sa prochaine synchronisation. Pour la modifier durablement, scellez la nouvelle valeur et commitez-la :",
+    "sealedEditDescriptionOnly": "Modifier uniquement la description le garde scellé.",
+    "managedTitle": "Géré par une base de données",
+    "managedDetails": "Créé avec sa base de données, qui en gère la rotation et la suppression : il ne peut pas être modifié ici."
   },
   "security": {
     "codesRemaining": "Aucun code de récupération restant. | {n} code de récupération restant. | {n} codes de récupération restants.",
