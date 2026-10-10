@@ -11,6 +11,7 @@ import { secretApi, type SecretInput, type SecretOwnership } from '@/api/secrets
 import type { Secret } from '@/api/types'
 import { usePagination } from '@/composables/usePagination'
 import { copyText } from '@/utils/clipboard'
+import { relativeTime } from '@/utils/time'
 import Pagination from '@/components/Pagination.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import AppModal from '@/components/AppModal.vue'
@@ -74,18 +75,23 @@ onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer) })
 // --- Create / edit ---
 const showForm = ref(false)
 const saving = ref(false)
-const editingId = ref<number | null>(null)
+const editing = ref<Secret | null>(null)
+const editingId = computed(() => editing.value?.id ?? null)
 const form = ref<{ name: string; value: string; description: string }>({ name: '', value: '', description: '' })
 
 function openCreate() {
-  editingId.value = null
+  editing.value = null
   form.value = { name: '', value: '', description: '' }
   showForm.value = true
 }
 function openEdit(s: Secret) {
-  editingId.value = s.id
+  editing.value = s
   form.value = { name: s.name, value: '', description: s.description || '' }
   showForm.value = true
+}
+// Database-managed secrets are rotated from their database, so the vault offers no edit or delete.
+function editable(s: Secret) {
+  return ws.canEdit && !s.managed
 }
 async function save() {
   const id = currentWorkspaceId.value
@@ -166,7 +172,10 @@ async function copy(text: string) {
 function reference(s: Secret) {
   return `\${{ secrets.${s.name} }}`
 }
-// Literal reference examples (built in script so the `}}` doesn't confuse the
+function sealCommand(s: Secret) {
+  return `miabi secrets seal ${s.name}`
+}
+
 // The generator modal: the deliberate "make me a value" path from the vault.
 // It shares GeneratorPanel with the /generator page and the inline button, so
 // the three cannot drift.
@@ -191,7 +200,8 @@ async function saveGenerated(name: string, description: string, value: string): 
   }
 }
 
-// Vue template's mustache parser).
+// Literal reference examples, built in script so the `}}` doesn't confuse the Vue template's
+// mustache parser.
 const refExample = 'PASSWORD=${{ secrets.NAME }}'
 const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`)
 </script>
@@ -222,14 +232,13 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
             :class="{ active: ownership === f.value }" :aria-pressed="ownership === f.value"
             @click="setOwnership(f.value)">{{ $t(f.label) }}</button>
         </div>
-        <span class="text-muted">{{ pageable.total_elements }} secret{{ pageable.total_elements === 1 ? '' : 's'
-          }}</span>
+        <span class="text-muted">{{ $t('count.secrets', pageable.total_elements) }}</span>
       </div>
 
       <div v-if="loading && secrets.length === 0" class="card-body"><span class="spinner"></span></div>
       <div v-else-if="secrets.length === 0" class="empty-state">
         <span class="mdi mdi-key-variant" style="font-size: 44px; color: var(--text-muted)"></span>
-        <h3>No secrets {{ narrowed ? 'found' : '' }}</h3>
+        <h3>{{ narrowed ? $t('secrets.noSecretsFound') : $t('secrets.noSecrets') }}</h3>
         <!-- An empty result under a filter is not an empty vault: offering
              "New secret" here would answer a question the user didn't ask. -->
         <p v-if="narrowed">{{ $t('secrets.noMatches') }}</p>
@@ -250,36 +259,33 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
             </thead>
             <tbody>
               <tr v-for="s in secrets" :key="s.id" @click="openDetails(s)" class="cursor-pointer">
-                <td class="cell-title" style="font-family: monospace">
-                  {{ s.name }}
-                  <span v-if="s.managed" class="badge badge-muted"
-                    :title="$t('secrets.managedHint')"
-                    style="margin-left: 6px"><span class="mdi mdi-database-outline"></span>{{ $t('secrets.managed') }}</span>
-                  <span v-if="s.sealed_key_version" class="badge badge-muted"
-                    :title="$t('secrets.sealedHint', { version: s.sealed_key_version })"
-                    style="margin-left: 6px"><span class="mdi mdi-lock-outline"></span>{{ $t('secrets.sealed') }}</span>
+                <td class="secret-cell">
+                  <div class="secret-title">
+                    <span class="secret-name" :title="s.name">{{ s.name }}</span>
+                    <span v-if="s.managed" class="badge badge-neutral secret-badge" :title="$t('secrets.managedHint')"><span
+                        class="mdi mdi-database-outline"></span>{{ $t('secrets.managed') }}</span>
+                    <span v-if="s.sealed_key_version" class="badge badge-info secret-badge"
+                      :title="$t('secrets.sealedHint', { version: s.sealed_key_version })"><span
+                        class="mdi mdi-lock"></span>{{ $t('secrets.sealed') }}</span>
+                  </div>
+                  <div v-if="s.description" class="secret-desc" :title="s.description">{{ s.description }}</div>
                 </td>
-                <td class="cell-sub" style="font-family: monospace">
-                  {{ reference(s) }}
-                  <button class="btn-icon btn-icon-muted" :title="$t('secrets.copyReference')" :aria-label="$t('secrets.copyReference')"
-                    @click.stop="copy(reference(s))"><span class="mdi mdi-content-copy"></span></button>
+                <td class="ref-cell">
+                  <div class="ref-row">
+                    <span class="ref-text" :title="reference(s)">{{ reference(s) }}</span>
+                    <button class="btn-icon btn-icon-muted" :title="$t('secrets.copyReference')" :aria-label="$t('secrets.copyReference')"
+                      @click.stop="copy(reference(s))"><span class="mdi mdi-content-copy"></span></button>
+                  </div>
                 </td>
                 <td class="cell-sub">v{{ s.version }}</td>
                 <td class="text-right">
                   <div class="table-actions">
-                    <button type="button" class="btn-icon btn-icon-muted"
-                      :title="revealed?.name === s.name ? 'View secret' : 'Reveal & view secret'"
-                      :disabled="revealingId === s.id" @click.stop="reveal(s); openDetails(s)">
-                      <span v-if="revealingId === s.id" class="mdi mdi-loading mdi-spin"></span>
-                      <span v-else class="mdi"
-                        :class="revealed?.name === s.name ? 'mdi-lock-open-outline' : 'mdi-lock-outline'"></span>
-                    </button>
-                    <button v-if="ws.isWorkspaceAdmin" class="btn-icon btn-icon-muted" :title="$t('secrets.revealValue')"
-                      :aria-label="$t('secrets.revealValue')" @click.stop="openDetails(s)"><span
+                    <button type="button" class="btn-icon btn-icon-muted" :title="$t('secrets.viewDetails')"
+                      :aria-label="$t('secrets.viewDetails')" @click.stop="openDetails(s)"><span
                         class="mdi mdi-eye-outline"></span></button>
-                    <button v-if="ws.canEdit && !s.managed" class="btn-icon btn-icon-muted" :title="$t('action.edit')"
+                    <button v-if="editable(s)" class="btn-icon btn-icon-muted" :title="$t('action.edit')"
                       :aria-label="$t('action.edit')" @click.stop="openEdit(s)"><span class="mdi mdi-pencil-outline"></span></button>
-                    <button v-if="ws.canEdit && !s.managed" class="btn-icon btn-icon-danger" :title="$t('action.delete')"
+                    <button v-if="editable(s)" class="btn-icon btn-icon-danger" :title="$t('action.delete')"
                       :aria-label="$t('action.delete')" @click.stop="toDelete = s"><span
                         class="mdi mdi-delete-outline"></span></button>
                   </div>
@@ -313,12 +319,26 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
       <!-- Create / edit -->
       <AppModal v-if="showForm" @close="showForm = false">
         <div class="modal-header">
-          <h3>{{ editingId ? 'Edit secret' : 'New secret' }}</h3>
+          <h3>{{ editingId ? $t('secrets.editSecret') : $t('secrets.newSecret') }}</h3>
           <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="showForm = false"><span
               class="mdi mdi-close"></span></button>
         </div>
         <form @submit.prevent="save">
           <div class="modal-body">
+            <div v-if="editing?.sealed_key_version" class="app-banner app-banner--warning sealed-banner" role="alert">
+              <span class="mdi mdi-lock-alert-outline app-banner-icon"></span>
+              <div class="app-banner-content">
+                <p class="app-banner-title">{{ $t('secrets.sealedEditTitle') }}</p>
+                <p class="app-banner-text">{{ $t('secrets.sealedEditText') }}</p>
+                <div class="code-box seal-command">
+                  <code>{{ sealCommand(editing) }}</code>
+                  <button type="button" class="btn-icon btn-icon-muted" :title="$t('secrets.copy')"
+                    :aria-label="$t('secrets.copy')" @click="copy(sealCommand(editing))"><span
+                      class="mdi mdi-content-copy"></span></button>
+                </div>
+                <p class="app-banner-text">{{ $t('secrets.sealedEditDescriptionOnly') }}</p>
+              </div>
+            </div>
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.name') }}</label>
               <input v-model="form.name" class="form-input" placeholder="db_password" :disabled="!!editingId"
@@ -347,31 +367,12 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="showForm = false">{{ $t('action.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? 'Saving…' : (editingId ?
-              'Save' :
-              'Create') }}</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">{{ saving ? $t('secrets.saving') :
+              (editingId ? $t('action.save') : $t('action.create')) }}</button>
           </div>
         </form>
       </AppModal>
 
-      <!-- Reveal -->
-      <!--       <div v-if="revealed" class="modal-overlay">
-        <div class="modal" style="max-width: 560px; width: 100%">
-          <div class="modal-header">
-            <h3>{{ revealed.name }}</h3>
-            <button class="btn-icon btn-icon-muted" :aria-label="$t('shell.close')" @click="revealed = null"><span class="mdi mdi-close"></span></button>
-          </div>
-          <div class="modal-body">
-            <div class="dns-field">
-              <span class="dns-field-label">{{ $t('secrets.value') }}</span>
-              <div class="dns-field-row">
-                <span class="dns-field-value secret-text">{{ revealed.value }}</span>
-                <button class="btn-icon btn-icon-muted" :title="$t('secrets.copy')" :aria-label="$t('secrets.copy')" @click="copy(revealed.value)"><span class="mdi mdi-content-copy"></span></button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div> -->
       <AppModal v-if="showDetails && selectedSecret" @close="closeDetails">
         <div class="modal-header">
           <h3>{{ $t('secrets.secretDetails') }}</h3>
@@ -381,6 +382,21 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
         </div>
 
         <div class="modal-body">
+          <div v-if="selectedSecret.sealed_key_version" class="app-banner app-banner--info detail-banner">
+            <span class="mdi mdi-lock app-banner-icon"></span>
+            <div class="app-banner-content">
+              <p class="app-banner-title">{{ $t('secrets.sealedTitle') }}</p>
+              <p class="app-banner-text">{{ $t('secrets.sealedDetails', { version: selectedSecret.sealed_key_version }) }}</p>
+            </div>
+          </div>
+          <div v-else-if="selectedSecret.managed" class="app-banner app-banner--info detail-banner">
+            <span class="mdi mdi-database-outline app-banner-icon"></span>
+            <div class="app-banner-content">
+              <p class="app-banner-title">{{ $t('secrets.managedTitle') }}</p>
+              <p class="app-banner-text">{{ $t('secrets.managedDetails') }}</p>
+            </div>
+          </div>
+
           <div class="detail-group">
             <label class="form-label">{{ $t('apps.form.name') }}</label>
             <div class="code-box">
@@ -407,8 +423,9 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
             <div class="code-box code-box-block">
               <code class="secret-text">{{ revealed?.name === selectedSecret.name ? revealed.value : '••••••••••••••••' }}</code>
               <div class="code-actions">
-                <button type="button" class="btn-icon btn-icon-muted" :disabled="revealingId === selectedSecret.id"
-                  @click="reveal(selectedSecret)">
+                <button v-if="ws.isWorkspaceAdmin" type="button" class="btn-icon btn-icon-muted"
+                  :title="$t('secrets.revealValue')" :aria-label="$t('secrets.revealValue')"
+                  :disabled="revealingId === selectedSecret.id" @click="reveal(selectedSecret)">
                   <span v-if="revealingId === selectedSecret.id" class="mdi mdi-loading mdi-spin"></span>
                   <span v-else class="mdi"
                     :class="revealed?.name === selectedSecret.name ? 'mdi-eye-off' : 'mdi-eye'"></span>
@@ -422,15 +439,28 @@ const refForName = computed(() => `\${{ secrets.${form.value.name || 'name'} }}`
             </div>
           </div>
 
-          <div class="detail-group" style="margin-bottom: 0">
+          <div class="detail-group">
             <label class="form-label">{{ $t('plans.description') }}</label>
-            <p class="detail-text">{{ selectedSecret.description || 'No description provided.' }}</p>
+            <p class="detail-text">{{ selectedSecret.description || $t('secrets.noDescription') }}</p>
+          </div>
+
+          <div class="detail-meta">
+            <div>
+              <span class="form-label">{{ $t('secrets.version') }}</span>
+              <span class="detail-text">v{{ selectedSecret.version }}</span>
+            </div>
+            <div v-if="selectedSecret.updated_at">
+              <span class="form-label">{{ $t('secrets.lastUpdated') }}</span>
+              <span class="detail-text" :title="new Date(selectedSecret.updated_at).toLocaleString()">{{
+                relativeTime(selectedSecret.updated_at) }}</span>
+            </div>
           </div>
         </div>
 
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" @click="closeDetails">{{ $t('shell.close') }}</button>
-          <button type="button" class="btn btn-primary" @click="closeDetails(); openEdit(selectedSecret)">
+          <button v-if="editable(selectedSecret)" type="button" class="btn btn-primary"
+            @click="openEdit(selectedSecret); closeDetails()">
             <span class="mdi mdi-pencil"></span>{{ $t('action.edit') }}</button>
         </div>
       </AppModal>
@@ -514,29 +544,90 @@ code {
   margin-top: 4px;
 }
 
-.dns-field-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.dns-field-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.dns-field-value {
-  font-family: monospace;
-  font-size: 13px;
-}
-
 .detail-group {
   margin-bottom: 16px;
+}
+
+.detail-banner,
+.sealed-banner {
+  margin-bottom: 16px;
+}
+
+.detail-meta {
+  display: flex;
+  gap: 32px;
+}
+
+.detail-meta > div {
+  display: flex;
+  flex-direction: column;
+}
+
+/* The name truncates on its own so its badges stay visible however long it is. */
+.secret-cell {
+  max-width: 440px;
+}
+
+.secret-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.secret-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+  font-weight: 550;
+  color: var(--text-primary);
+}
+
+.secret-badge {
+  flex-shrink: 0;
+  gap: 3px;
+}
+
+/* Like the name: the reference truncates, its copy button doesn't. */
+.ref-cell {
+  max-width: 360px;
+}
+
+.ref-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ref-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.ref-row .btn-icon {
+  flex-shrink: 0;
+}
+
+.secret-desc {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.seal-command {
+  margin: 6px 0;
+  background: var(--bg-primary);
 }
 
 .detail-text {
