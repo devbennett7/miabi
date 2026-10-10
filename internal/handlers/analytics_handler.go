@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"encoding/csv"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,10 +28,12 @@ type AnalyticsHandler struct {
 	// rather than failing, since live visitors is an accent on the dashboard and
 	// not something worth erroring a page over.
 	live *analytics.LiveTracker
+	// apps resolves an ?app= given as a uid or name; nil accepts numeric ids only.
+	apps middlewares.AppRefResolver
 }
 
-func NewAnalyticsHandler(repo *repositories.AnalyticsRepository, ee enterprise.EE, live *analytics.LiveTracker) *AnalyticsHandler {
-	return &AnalyticsHandler{repo: repo, ee: ee, live: live}
+func NewAnalyticsHandler(repo *repositories.AnalyticsRepository, ee enterprise.EE, live *analytics.LiveTracker, apps middlewares.AppRefResolver) *AnalyticsHandler {
+	return &AnalyticsHandler{repo: repo, ee: ee, live: live, apps: apps}
 }
 
 // maxAnalyticsRange caps how far back a single query may look, keeping the
@@ -68,9 +71,9 @@ func (h *AnalyticsHandler) Report(c *okapi.Context) error {
 	until := time.Now().UTC()
 	since := until.Add(-window)
 
-	appFilter, err := appFilterParam(c)
+	appFilter, err := h.appFilterParam(c)
 	if err != nil {
-		return c.AbortBadRequest("invalid app id")
+		return c.AbortNotFound("application not found")
 	}
 
 	rows, err := h.repo.Range(wsID, appFilter, since, until)
@@ -107,9 +110,9 @@ func (h *AnalyticsHandler) Export(c *okapi.Context) error {
 	until := time.Now().UTC()
 	since := until.Add(-window)
 
-	appFilter, err := appFilterParam(c)
+	appFilter, err := h.appFilterParam(c)
 	if err != nil {
-		return c.AbortBadRequest("invalid app id")
+		return c.AbortNotFound("application not found")
 	}
 
 	rows, err := h.repo.Range(wsID, appFilter, since, until)
@@ -153,9 +156,9 @@ func (h *AnalyticsHandler) Summary(c *okapi.Context) error {
 	until := time.Now().UTC()
 	since := until.Add(-window)
 
-	appFilter, err := appFilterParam(c)
+	appFilter, err := h.appFilterParam(c)
 	if err != nil {
-		return c.AbortBadRequest("invalid app id")
+		return c.AbortNotFound("application not found")
 	}
 
 	rows, err := h.repo.RangeSummary(wsID, appFilter, since, until, true)
@@ -182,9 +185,9 @@ func (h *AnalyticsHandler) Summary(c *okapi.Context) error {
 func (h *AnalyticsHandler) Live(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 
-	appFilter, err := appFilterParam(c)
+	appFilter, err := h.appFilterParam(c)
 	if err != nil {
-		return c.AbortBadRequest("invalid app id")
+		return c.AbortNotFound("application not found")
 	}
 	var app uint
 	if appFilter != nil {
@@ -207,18 +210,28 @@ func (h *AnalyticsHandler) Live(c *okapi.Context) error {
 	})
 }
 
-func appFilterParam(c *okapi.Context) (*uint, error) {
-	q := c.Query("app")
+// appFilterParam reads ?app= as an application id, uid or name. A numeric id is used as is, with
+// no lookup, so the traffic of a deleted app stays filterable; a uid or name resolves in the workspace.
+func (h *AnalyticsHandler) appFilterParam(c *okapi.Context) (*uint, error) {
+	q := strings.TrimSpace(c.Query("app"))
 	if q == "" {
 		return nil, nil
 	}
-	id, err := strconv.ParseUint(q, 10, 64)
-	if err != nil || id == 0 {
-		return nil, err
+	if id, err := strconv.ParseUint(q, 10, 64); err == nil && id > 0 {
+		v := uint(id)
+		return &v, nil
 	}
-	v := uint(id)
-	return &v, nil
+	if h.apps == nil {
+		return nil, errAppNotFound
+	}
+	id, err := h.apps.IDByRef(middlewares.WorkspaceID(c), q)
+	if err != nil || id == 0 {
+		return nil, errAppNotFound
+	}
+	return &id, nil
 }
+
+var errAppNotFound = errors.New("application not found")
 
 // Apps lists the application ids that have analytics data in the window, so the
 // UI's app filter shows only apps with traffic.

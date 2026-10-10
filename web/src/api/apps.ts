@@ -194,8 +194,8 @@ export const appApi = {
   resourceLimits(ws: number) {
     return api.get<ApiResponse<ResourceLimits>>(`/workspaces/${ws}/resource-limits`)
   },
-  get(ws: number, id: number) {
-    return api.get<ApiResponse<Application>>(`/workspaces/${ws}/apps/${id}`)
+  get(ws: number, id: number | string) {
+    return api.get<ApiResponse<Application>>(`/workspaces/${ws}/apps/${encodeURIComponent(id)}`)
   },
   // The response is the YAML bundle itself, not the {success,data} envelope: it is meant to be
   // saved to a file, and unwrapping a document to do that helps nobody.
