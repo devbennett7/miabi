@@ -81,7 +81,8 @@ machine-readable:
 - Community core: the GNU AGPL notice (`Copyright (c) 2026 Jonas Kaninda.`, `This file is part of Miabi.`, then
   the standard "This program is free software…" text), ending with
   `SPDX-License-Identifier: AGPL-3.0-or-later`
-- Reusable packages under `pkg/`: `SPDX-License-Identifier: Apache-2.0`
+- Reusable packages under `pkg/`: the standard Apache-2.0 notice, with the same
+  copyright and "part of Miabi" lines, ending with `SPDX-License-Identifier: Apache-2.0`
 - Enterprise: `SPDX-License-Identifier: LicenseRef-Miabi-Enterprise`
 
 `LicenseRef-Miabi-Enterprise` is the custom (non-SPDX-registered) Miabi Enterprise
