@@ -78,7 +78,9 @@ Every source file declares its license inline with an [SPDX](https://spdx.dev)
 identifier, so the AGPL / Apache / Enterprise boundaries are explicit and
 machine-readable:
 
-- Community core: `SPDX-License-Identifier: AGPL-3.0-or-later`
+- Community core: the GNU AGPL notice (`Copyright (c) 2026 Jonas Kaninda.`, `This file is part of Miabi.`, then
+  the standard "This program is free software…" text), ending with
+  `SPDX-License-Identifier: AGPL-3.0-or-later`
 - Reusable packages under `pkg/`: `SPDX-License-Identifier: Apache-2.0`
 - Enterprise: `SPDX-License-Identifier: LicenseRef-Miabi-Enterprise`
 
