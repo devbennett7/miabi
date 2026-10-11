@@ -83,7 +83,9 @@ machine-readable:
   `SPDX-License-Identifier: AGPL-3.0-or-later`
 - Reusable packages under `pkg/`: the standard Apache-2.0 notice, with the same
   copyright and "part of Miabi" lines, ending with `SPDX-License-Identifier: Apache-2.0`
-- Enterprise: `SPDX-License-Identifier: LicenseRef-Miabi-Enterprise`
+- Enterprise: a Miabi Enterprise License notice (`Copyright (c) 2026 Jonas Kaninda.
+  All rights reserved.`, `This file is part of Miabi Enterprise Edition.`), ending with
+  `SPDX-License-Identifier: LicenseRef-Miabi-Enterprise`
 
 `LicenseRef-Miabi-Enterprise` is the custom (non-SPDX-registered) Miabi Enterprise
 License whose full text lives in

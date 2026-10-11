@@ -1,6 +1,13 @@
 //go:build enterprise
 
-// SPDX-FileCopyrightText: 2026 Jonas Kaninda
+// Copyright (c) 2026 Jonas Kaninda. All rights reserved.
+//
+// This file is part of Miabi Enterprise Edition.
+//
+// This file is licensed under the Miabi Enterprise License, not the GNU Affero
+// General Public License. You may use it only with a valid Miabi Enterprise
+// subscription and under the terms in internal/enterprise/LICENSE.md.
+//
 // SPDX-License-Identifier: LicenseRef-Miabi-Enterprise
 
 // Package saml implements a SAML 2.0 service provider on top of crewjam/saml, compiled only into
