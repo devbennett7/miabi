@@ -206,6 +206,9 @@ export const adminApi = {
   // (null clears it → inherit the platform default; -1 = unlimited).
   setWorkspaceLimit: (id: number, limit: number | null) =>
     api.put<ApiResponse<AdminUser>>(`/admin/users/${id}/workspace-limit`, { limit }),
+  // Enterprise per-user allow/deny of workspace creation (null clears it → inherit).
+  setWorkspaceCreation: (id: number, allowed: boolean | null) =>
+    api.put<ApiResponse<AdminUser>>(`/admin/users/${id}/workspace-creation`, { allowed }),
   // Enterprise per-user override of how many workspaces the user may join as a member.
   setWorkspaceMembershipLimit: (id: number, limit: number | null) =>
     api.put<ApiResponse<AdminUser>>(`/admin/users/${id}/workspace-membership-limit`, { limit }),

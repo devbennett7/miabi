@@ -55,17 +55,21 @@ type User struct {
 	AuthSource         string     `json:"auth_source" gorm:"not null;default:'local'"`
 	Kind               string     `json:"kind" gorm:"not null;default:'user';index"`
 	// ServiceWorkspaceID is the workspace that owns a service account; its admins manage it.
-	ServiceWorkspaceID       *uint      `json:"service_workspace_id,omitempty" gorm:"index"`
-	OrganizationID           *uint      `json:"organization_id,omitempty" gorm:"index"`
-	WorkspaceLimit           *int       `json:"workspace_limit,omitempty"`
-	WorkspaceMembershipLimit *int       `json:"workspace_membership_limit,omitempty"`
-	ScheduledDeletionAt      *time.Time `json:"scheduled_deletion_at" gorm:"index"`
-	EmailVerifiedAt          *time.Time `json:"email_verified_at"`
-	LastLoginAt              *time.Time `json:"last_login_at"`
-	OnboardingDismissedAt    *time.Time `json:"onboarding_dismissed_at"`
-	DefaultWorkspaceID       *uint      `json:"default_workspace_id" gorm:"index"`
-	CreatedAt                time.Time  `json:"created_at"`
-	UpdatedAt                time.Time  `json:"updated_at"`
+	ServiceWorkspaceID       *uint `json:"service_workspace_id,omitempty" gorm:"index"`
+	OrganizationID           *uint `json:"organization_id,omitempty" gorm:"index"`
+	WorkspaceLimit           *int  `json:"workspace_limit,omitempty"`
+	WorkspaceMembershipLimit *int  `json:"workspace_membership_limit,omitempty"`
+	// CanCreateWorkspaces overrides the organization's workspace creation mode for this user; nil
+	// inherits it.
+	CanCreateWorkspaces   *bool      `json:"can_create_workspaces,omitempty"`
+	SignupSource          string     `json:"signup_source" gorm:"not null;default:''"`
+	ScheduledDeletionAt   *time.Time `json:"scheduled_deletion_at" gorm:"index"`
+	EmailVerifiedAt       *time.Time `json:"email_verified_at"`
+	LastLoginAt           *time.Time `json:"last_login_at"`
+	OnboardingDismissedAt *time.Time `json:"onboarding_dismissed_at"`
+	DefaultWorkspaceID    *uint      `json:"default_workspace_id" gorm:"index"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
 }
 
 // IsAdmin reports whether u is a platform admin. A service account never is, whatever its role
@@ -103,6 +107,9 @@ func (u *User) AfterCreate(tx *gorm.DB) error {
 }
 
 func (u *User) BeforeCreate(tx *gorm.DB) error {
+	if u.SignupSource == "" && u.IsExternal() {
+		u.SignupSource = strings.ToLower(strings.TrimSpace(u.AuthSource))
+	}
 	if h := slug.Make(u.Username, ""); h != "" {
 		u.Username = h
 		return nil

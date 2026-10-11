@@ -59,10 +59,12 @@ const SECTIONS: SectionDef[] = [
   {
     id: 'access',
     title: 'Registration & access',
-    keys: ['require_email_verification', 'allowed_signup_domains'],
+    keys: ['require_email_verification', 'allowed_signup_domains', 'invitation_signup_enabled', 'workspace_creation'],
     labels: {
       require_email_verification: 'Require email verification',
       allowed_signup_domains: 'Allowed signup domains (CSV, blank = any)',
+      invitation_signup_enabled: 'Let invitees create their account from the invitation, even while sign-up is closed',
+      workspace_creation: 'Who can create workspaces (platform admins always can)',
     },
   },
   {
@@ -109,6 +111,7 @@ const READONLY_LABELS: Record<string, string> = { install_id: 'Install ID' }
 const CHOICES: Record<string, string[]> = {
   default_workspace_role: ['viewer', 'developer', 'admin', 'owner'],
   control_manager_mode: ['observe', 'enforce', 'off'],
+  workspace_creation: ['anyone', 'except_invited', 'admins_only'],
 }
 
 // All keys explicitly placed in a known section.

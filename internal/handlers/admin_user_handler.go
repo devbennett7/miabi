@@ -90,6 +90,40 @@ func (h *AdminUserHandler) SetWorkspaceLimit(c *okapi.Context, req *AdminSetWork
 	return ok(c, target)
 }
 
+// AdminSetWorkspaceCreationRequest sets or clears a user's workspace creation override.
+type AdminSetWorkspaceCreationRequest struct {
+	Body struct {
+		// Allowed overrides the organization's workspace creation mode for this user. null clears
+		// it (inherit).
+		Allowed *bool `json:"allowed"`
+	} `json:"body"`
+}
+
+// SetWorkspaceCreation sets or clears whether a user may create workspaces, whatever their
+// organization's mode (Enterprise: user_workspace_limit, like the count override).
+func (h *AdminUserHandler) SetWorkspaceCreation(c *okapi.Context, req *AdminSetWorkspaceCreationRequest) error {
+	if err := h.requireLimitOverride(); err != nil {
+		return entitlementAbort(c, err)
+	}
+	target, err := h.targetUser(c)
+	if err != nil {
+		return c.AbortNotFound("user not found")
+	}
+	if target.IsService() {
+		return c.AbortBadRequest("a service account cannot create workspaces")
+	}
+	if err := h.users.SetCanCreateWorkspaces(target.ID, req.Body.Allowed); err != nil {
+		return c.AbortInternalServerError("failed to set workspace creation", err)
+	}
+	target.CanCreateWorkspaces = req.Body.Allowed
+	value := "inherit"
+	if req.Body.Allowed != nil {
+		value = strconv.FormatBool(*req.Body.Allowed)
+	}
+	h.record(c, "admin.user.workspace_creation.set", target.ID, map[string]any{"allowed": value})
+	return ok(c, target)
+}
+
 // requireLimitOverride returns the entitlement error for the workspace-limit
 // override, tolerating a nil edition gate (treated as community).
 func (h *AdminUserHandler) requireLimitOverride() error {
@@ -363,6 +397,7 @@ func (h *AdminUserHandler) Create(c *okapi.Context, req *AdminCreateUserRequest)
 		Active:          true,
 		EmailVerifiedAt: &now,
 		OrganizationID:  orgID,
+		SignupSource:    models.SignupSourceAdmin,
 		// Admin-set password is temporary — force the user to set their own on first
 		// login.
 		MustChangePassword: true,

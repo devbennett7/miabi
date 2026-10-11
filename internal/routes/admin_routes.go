@@ -101,6 +101,15 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodPut,
+			Path:        "/users/{id}/workspace-creation",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     okapi.H(r.h.adminUser.SetWorkspaceCreation),
+			Summary:     "Allow, deny or inherit a user's workspace creation (Enterprise)",
+			Request:     &handlers.AdminSetWorkspaceCreationRequest{},
+		},
+		{
+			Method:      http.MethodPut,
 			Path:        "/users/{id}/workspace-membership-limit",
 			Group:       g,
 			Middlewares: admin,

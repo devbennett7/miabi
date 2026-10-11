@@ -130,7 +130,7 @@ function leaveAdmin() {
         <div v-if="!ws.workspaces.length" class="ws-switcher-empty">{{ t('switcher.empty') }}</div>
 
         <div class="ws-switcher-divider"></div>
-        <div class="ws-switcher-action" @click="go('/workspaces?create=1')">
+        <div v-if="auth.canCreateWorkspace" class="ws-switcher-action" @click="go('/workspaces?create=1')">
           <span class="mdi mdi-plus"></span><span>{{ t('switcher.create') }}</span>
         </div>
         <div class="ws-switcher-action" @click="go('/workspaces')">

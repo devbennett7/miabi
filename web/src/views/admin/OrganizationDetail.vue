@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { adminApi } from '@/api/admin'
 import { clustersApi } from '@/api/clusters'
-import type { Cluster, OrganizationDetail, OrganizationUpdate } from '@/api/types'
+import type { Cluster, OrganizationDetail, OrganizationUpdate, WorkspaceCreationMode } from '@/api/types'
 import { useNotificationStore } from '@/stores/notification'
 import { useEntitlement } from '@/composables/useEntitlement'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -34,10 +34,17 @@ const form = ref({
   per_user: 10,
   joined_mode: 'inherit' as LimitMode,
   joined: 10,
+  creation: 'inherit' as 'inherit' | WorkspaceCreationMode,
 })
 
+const CREATION_LABELS: Record<WorkspaceCreationMode, string> = {
+  anyone: 'Anyone',
+  except_invited: 'Anyone except users who joined from an invitation',
+  admins_only: 'Administrators and the organization owner only',
+}
+
 // The platform defaults, shown in the Inherit labels so an admin can see what they are inheriting.
-const platformDefaults = ref({ owned: null as number | null, joined: null as number | null })
+const platformDefaults = ref({ owned: null as number | null, joined: null as number | null, creation: '' })
 function defaultLabel(n: number | null): string {
   if (n === null) return 'the platform default'
   return n < 0 ? 'unlimited' : String(n)
@@ -70,6 +77,7 @@ async function load() {
     platformDefaults.value = {
       owned: setting('max_workspaces_per_user'),
       joined: setting('max_workspace_memberships_per_user'),
+      creation: (settingList.data.data ?? []).find((r) => r.key === 'workspace_creation')?.value ?? '',
     }
     form.value = {
       display_name: org.value.display_name,
@@ -80,6 +88,7 @@ async function load() {
       per_user: Math.max(0, org.value.max_workspaces_per_user ?? platformDefaults.value.owned ?? 10),
       joined_mode: modeOf(org.value.max_workspace_memberships_per_user),
       joined: Math.max(0, org.value.max_workspace_memberships_per_user ?? 10),
+      creation: org.value.workspace_creation ?? 'inherit',
     }
   } catch (e) {
     notify.apiError(e)
@@ -116,7 +125,8 @@ const dirty = computed(() => {
     cap !== o.max_workspaces ||
     form.value.default_cluster_id !== (o.default_cluster_id ?? 0) ||
     perUser !== (o.max_workspaces_per_user ?? undefined) ||
-    joined !== (o.max_workspace_memberships_per_user ?? undefined)
+    joined !== (o.max_workspace_memberships_per_user ?? undefined) ||
+    form.value.creation !== (o.workspace_creation ?? 'inherit')
   )
 })
 
@@ -131,6 +141,7 @@ const labelOnlyChange = computed(() => {
     cap === o.max_workspaces &&
     limitValue(form.value.per_user_mode, form.value.per_user) === (o.max_workspaces_per_user ?? undefined) &&
     limitValue(form.value.joined_mode, form.value.joined) === (o.max_workspace_memberships_per_user ?? undefined) &&
+    form.value.creation === (o.workspace_creation ?? 'inherit') &&
     form.value.default_cluster_id === (o.default_cluster_id ?? 0)
   )
 })
@@ -153,6 +164,9 @@ async function save() {
     if (o && joined !== (o.max_workspace_memberships_per_user ?? undefined)) {
       if (form.value.joined_mode === 'inherit') payload.inherit_workspace_memberships_per_user = true
       else payload.max_workspace_memberships_per_user = joined
+    }
+    if (o && form.value.creation !== (o.workspace_creation ?? 'inherit')) {
+      payload.workspace_creation = form.value.creation
     }
     // Only send the location when it actually changed: it is the one field still gated on the
     // organizations entitlement, and sending it unchanged would refuse an otherwise allowed edit.
@@ -294,6 +308,20 @@ const promoteMessage = computed(() => {
             <p class="form-hint">
               How many workspaces this organization may hold in total. Workspaces already created stay;
               only the next one is refused. A limit of 0 allows none at all.
+            </p>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Who can create workspaces</label>
+            <select v-model="form.creation" class="form-select" :disabled="!entitlement.mutable.value" style="max-width: 420px">
+              <option value="inherit">
+                Inherit the platform setting{{ platformDefaults.creation ? ` (${CREATION_LABELS[platformDefaults.creation as WorkspaceCreationMode] ?? platformDefaults.creation})` : '' }}
+              </option>
+              <option v-for="(label, mode) in CREATION_LABELS" :key="mode" :value="mode">{{ label }}</option>
+            </select>
+            <p class="form-hint">
+              Applies to this organization's users. Platform admins can always create workspaces, and an
+              administrator can allow or deny a single user from their page. Existing workspaces are not
+              affected.
             </p>
           </div>
           <div class="form-group">

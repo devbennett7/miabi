@@ -148,6 +148,9 @@ func (h *AdminSettingHandler) Update(c *okapi.Context, req *UpdateSettingsReques
 				return c.AbortBadRequest(fmt.Sprintf("%s must be a whole number", key))
 			}
 		}
+		if key == settings.KeyWorkspaceCreation && !models.ValidWorkspaceCreation(strings.TrimSpace(s.Value)) {
+			return c.AbortBadRequest(`workspace_creation must be "anyone", "except_invited" or "admins_only"`)
+		}
 		toSave = append(toSave, models.Setting{Key: key, Value: strings.TrimSpace(s.Value), Type: t})
 	}
 	if err := h.repo.BulkUpsert(toSave); err != nil {

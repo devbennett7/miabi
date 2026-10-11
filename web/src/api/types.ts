@@ -335,11 +335,43 @@ export interface User {
   kind?: UserKind
   /** The workspace that owns a service account; absent for people. */
   service_workspace_id?: number | null
+  /** How the account came to exist: 'self', 'invitation', 'admin' or an identity provider. */
+  signup_source?: string
+  /** Enterprise per-user override of the workspace creation mode; absent inherits it. */
+  can_create_workspaces?: boolean | null
+  /** Populated on /me only: whether the user may create a workspace. */
+  workspace_creation?: WorkspaceCreationPolicy
   created_at?: string
   last_login_at?: string | null
 }
 
 export type UserKind = 'user' | 'service'
+
+export type WorkspaceCreationMode = 'anyone' | 'except_invited' | 'admins_only'
+
+export interface WorkspaceCreationPolicy {
+  allowed: boolean
+  mode?: WorkspaceCreationMode
+  /** Which rule decided: 'admin', 'user', 'organization' or 'platform'. */
+  source: string
+}
+
+export interface InvitationPreview {
+  workspace_name: string
+  invited_by_name: string
+  role: string
+  email: string
+  expires_at: string
+  account_exists: boolean
+  signup_allowed: boolean
+  sso_required: boolean
+}
+
+export interface RegisterFromInvitationResult {
+  workspace_id: number
+  workspace_name: string
+  message: string
+}
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 
@@ -492,6 +524,10 @@ export interface AdminUser {
   // Enterprise per-user overrides (null = inherit the platform default; -1 = unlimited).
   workspace_limit?: number | null
   workspace_membership_limit?: number | null
+  // Overrides the organization's workspace creation mode; null = inherit.
+  can_create_workspaces?: boolean | null
+  // How the account came to exist: 'self', 'invitation', 'admin' or an identity provider.
+  signup_source?: string
   // The realm the user's NEW workspaces are created in; null = the default organization.
   organization_id?: number | null
 }
@@ -516,6 +552,8 @@ export interface Organization {
   max_workspace_memberships_per_user?: number | null
   /** The location this organization's new workspaces land in; null = the platform default. */
   default_cluster_id?: number | null
+  /** Who among the org's users may create workspaces; null inherits the platform setting. */
+  workspace_creation?: WorkspaceCreationMode | null
   enforce_sso: boolean
   /** Filled on list; how many workspaces the organization holds. */
   workspace_count: number
@@ -549,6 +587,8 @@ export interface OrganizationUpdate {
   max_workspace_memberships_per_user?: number
   inherit_workspaces_per_user?: boolean
   inherit_workspace_memberships_per_user?: boolean
+  /** 'inherit' falls back to the platform setting; omitting the field leaves it unchanged. */
+  workspace_creation?: WorkspaceCreationMode | 'inherit'
   /** 0 clears the default location; omitting the field leaves it unchanged. */
   default_cluster_id?: number
 }

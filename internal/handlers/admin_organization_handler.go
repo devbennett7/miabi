@@ -113,6 +113,8 @@ type AdminCreateOrganizationRequest struct {
 		// Per-user caps for this org's users; null inherits the platform default.
 		MaxWorkspacesPerUser           *int `json:"max_workspaces_per_user" min:"-1"`
 		MaxWorkspaceMembershipsPerUser *int `json:"max_workspace_memberships_per_user" min:"-1"`
+		// WorkspaceCreation is who may create workspaces; null inherits the platform setting.
+		WorkspaceCreation *string `json:"workspace_creation" enum:"anyone,except_invited,admins_only"`
 	} `json:"body"`
 }
 
@@ -134,6 +136,7 @@ func (h *AdminOrganizationHandler) Create(c *okapi.Context, req *AdminCreateOrga
 		MaxWorkspaces:                  req.Body.MaxWorkspaces,
 		MaxWorkspacesPerUser:           req.Body.MaxWorkspacesPerUser,
 		MaxWorkspaceMembershipsPerUser: req.Body.MaxWorkspaceMembershipsPerUser,
+		WorkspaceCreation:              req.Body.WorkspaceCreation,
 	})
 	if err != nil {
 		return h.mapErr(c, err)
@@ -153,6 +156,9 @@ type AdminUpdateOrganizationRequest struct {
 		MaxWorkspaceMembershipsPerUser     *int  `json:"max_workspace_memberships_per_user" min:"-1"`
 		InheritWorkspacesPerUser           *bool `json:"inherit_workspaces_per_user"`
 		InheritWorkspaceMembershipsPerUser *bool `json:"inherit_workspace_memberships_per_user"`
+		// WorkspaceCreation is who may create workspaces: anyone, except_invited, admins_only, or
+		// inherit to fall back to the platform setting. Null leaves it as it is.
+		WorkspaceCreation *string `json:"workspace_creation" enum:"anyone,except_invited,admins_only,inherit"`
 		// DefaultClusterID is the location the org's new workspaces land in. Sending 0 clears it,
 		// which a null cannot express — null means "leave as it is".
 		DefaultClusterID *uint `json:"default_cluster_id"`
@@ -178,6 +184,13 @@ func (h *AdminOrganizationHandler) Update(c *okapi.Context, req *AdminUpdateOrga
 		MaxWorkspaces:                  req.Body.MaxWorkspaces,
 		MaxWorkspacesPerUser:           req.Body.MaxWorkspacesPerUser,
 		MaxWorkspaceMembershipsPerUser: req.Body.MaxWorkspaceMembershipsPerUser,
+	}
+	if req.Body.WorkspaceCreation != nil {
+		if *req.Body.WorkspaceCreation == "inherit" {
+			in.InheritWorkspaceCreation = true
+		} else {
+			in.WorkspaceCreation = req.Body.WorkspaceCreation
+		}
 	}
 	if req.Body.InheritWorkspacesPerUser != nil {
 		in.InheritWorkspacesPerUser = *req.Body.InheritWorkspacesPerUser
@@ -246,7 +259,8 @@ func touchesOrgLimits(req *AdminUpdateOrganizationRequest) bool {
 		req.Body.MaxWorkspacesPerUser != nil ||
 		req.Body.MaxWorkspaceMembershipsPerUser != nil ||
 		req.Body.InheritWorkspacesPerUser != nil ||
-		req.Body.InheritWorkspaceMembershipsPerUser != nil
+		req.Body.InheritWorkspaceMembershipsPerUser != nil ||
+		req.Body.WorkspaceCreation != nil
 }
 
 // limitChanges records which caps an update moved, and from what. "Who lowered this limit" is the
@@ -262,10 +276,20 @@ func limitChanges(before, after *models.Organization) map[string]any {
 	if !samePtr(before.MaxWorkspaceMembershipsPerUser, after.MaxWorkspaceMembershipsPerUser) {
 		out["max_workspace_memberships_per_user"] = []any{before.MaxWorkspaceMembershipsPerUser, after.MaxWorkspaceMembershipsPerUser}
 	}
+	if !sameStrPtr(before.WorkspaceCreation, after.WorkspaceCreation) {
+		out["workspace_creation"] = []any{before.WorkspaceCreation, after.WorkspaceCreation}
+	}
 	if len(out) == 0 {
 		return nil
 	}
 	return out
+}
+
+func sameStrPtr(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func samePtr(a, b *int) bool {
@@ -286,7 +310,8 @@ func (h *AdminOrganizationHandler) mapErr(c *okapi.Context, err error) error {
 	case errors.Is(err, organization.ErrClusterNotOurs):
 		return c.AbortBadRequest(err.Error())
 	case errors.Is(err, organization.ErrNameInvalid), errors.Is(err, organization.ErrNameReserved),
-		errors.Is(err, organization.ErrInvalidMax), errors.Is(err, organization.ErrNameImmutable):
+		errors.Is(err, organization.ErrInvalidMax), errors.Is(err, organization.ErrNameImmutable),
+		errors.Is(err, organization.ErrInvalidWorkspaceCreation):
 		return c.AbortBadRequest(err.Error())
 	}
 	return c.AbortInternalServerError("organization operation failed", err)

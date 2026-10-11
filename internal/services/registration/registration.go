@@ -57,6 +57,12 @@ func (s *Service) RequiresVerification() bool {
 	return s.settings.Bool(settings.KeyRequireEmailVerification, false)
 }
 
+// InvitationSignupEnabled reports whether an invitee may create their account from the invitation.
+// Independent of Enabled: the invitation is the authorization, so this works while sign-up is closed.
+func (s *Service) InvitationSignupEnabled() bool {
+	return s.settings.Bool(settings.KeyInvitationSignupEnabled, true)
+}
+
 // CanSendMail reports whether the platform has a usable mail server.
 func (s *Service) CanSendMail() bool {
 	return s.mailer != nil && s.mailer.IsConfigured()

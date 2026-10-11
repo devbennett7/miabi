@@ -2694,12 +2694,13 @@
     "wsSettings": {
       "backupSaved": "Backup settings saved",
       "deleted": "Workspace deleted",
-      "inviteCreated": "Invitation created — share the token below",
+      "inviteCreated": "Invitation created — share the link below",
+      "inviteEmailed": "Invitation emailed to {email}",
       "locationUpdated": "Default location updated",
       "memberRemoved": "Member removed",
       "nameUpdated": "Workspace name updated",
       "roleUpdated": "Role updated",
-      "tokenCopied": "Token copied",
+      "tokenCopied": "Link copied",
       "updated": "Workspace updated"
     },
     "serviceAccounts": {
@@ -3120,6 +3121,28 @@
     "updateTheNameShownAcross": "Update the name shown across Miabi. Your email is managed by an administrator.",
     "username": "Username",
     "yourUniqueHandleLowercaseLetters": "Your unique handle — lowercase letters, digits, and hyphens. Used as a directory identifier."
+  },
+  "acceptInvite": {
+    "loading": "Opening your invitation…",
+    "title": "Join {workspace}",
+    "subtitle": "You've been invited as {role}.",
+    "subtitleBy": "{name} invited you as {role}.",
+    "invalidTitle": "Invitation not available",
+    "invalidBody": "This invitation link is invalid, has expired or has already been used. Ask the person who invited you for a new one.",
+    "openConsole": "Open the console",
+    "join": "Join {workspace}",
+    "otherAccount": "This invitation is for {invited}, but you're signed in as {current}. Sign out, then open the link again.",
+    "signOut": "Sign out",
+    "signInToAccept": "{email} already has an account. Sign in to accept the invitation.",
+    "signIn": "Sign in",
+    "ssoRequired": "This organization signs in with single sign-on. Continue with SSO and the invitation is accepted when you're in.",
+    "continueWithSso": "Continue with SSO",
+    "createAndJoin": "Create account and join",
+    "passwordHint": "At least {n} characters.",
+    "passwordTooShort": "Password must be at least {n} characters.",
+    "noSignup": "There is no account for {email} yet, and this platform does not create accounts from invitations. Ask an administrator to create yours.",
+    "acceptFailed": "Could not accept the invitation.",
+    "signupFailed": "Could not create your account."
   },
   "register": {
     "doneTitle": "Account created",
@@ -3941,6 +3964,7 @@
     "invitedAs": "Invited as {role}",
     "invitedBy": "by {name}",
     "orCreateYourOwnWorkspace": "Or create your own workspace",
+    "askForAnInvitation": "You don't have a workspace yet. Ask an administrator to invite you to one.",
     "youVeBeenInvited": "You've been invited"
   },
   "workspaces": {
@@ -3994,9 +4018,9 @@
     "endpoint": "Endpoint",
     "general": "General",
     "handleHint": "The unique handle in the workspace's URLs and its {docker} namespace. Lowercase letters, digits, and hyphens. {warning}, and reserved names are not allowed.",
-    "invitationToken": "Invitation token",
+    "invitationToken": "Invitation link",
     "inviteAMember": "Invite a member",
-    "inviteTokenHint": "Share this token with the invitee — it is shown only once.",
+    "inviteTokenHint": "This platform cannot send email, so share this link with the invitee yourself. It is shown only once.",
     "inviteeEmail": "Invitee email",
     "inviteeRole": "Invitee role",
     "limitsAreShownForReference": "Limits are shown for reference; enforcement is disabled platform-wide.",

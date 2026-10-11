@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { pendingInvite } from '@/utils/pendingInvite'
 
 const router = useRouter()
 const route = useRoute()
@@ -19,7 +20,7 @@ onMounted(async () => {
   try {
     await auth.fetchUser()
     if (!auth.isAuthenticated) throw new Error('no session')
-    router.replace('/')
+    router.replace(pendingInvite() ? { name: 'accept-invitation' } : '/')
   } catch {
     error.value = 'Failed to complete sign in.'
     router.replace({ name: 'login', query: { error: 'oauth_failed' } })

@@ -84,6 +84,7 @@ func SeedAdmin(db *gorm.DB, email, password string) (*models.User, error) {
 		Role:            models.SystemRoleAdmin,
 		Active:          true,
 		EmailVerifiedAt: &now,
+		SignupSource:    models.SignupSourceAdmin,
 	}
 	if err := db.Create(admin).Error; err != nil {
 		return nil, fmt.Errorf("create admin user: %w", err)

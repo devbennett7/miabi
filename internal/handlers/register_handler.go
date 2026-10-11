@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/auth"
 	"github.com/miabi-io/miabi/internal/services/mailer"
 	"github.com/miabi-io/miabi/internal/services/registration"
+	"github.com/miabi-io/miabi/internal/services/workspace"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -26,11 +28,19 @@ const MinRegistrationPasswordLen = 12
 
 // RegisterHandler owns self-service sign-up.
 type RegisterHandler struct {
-	reg    *registration.Service
-	auth   *auth.Service
-	users  *repositories.UserRepository
-	mailer *mailer.Service
-	audit  *audit.Logger
+	reg        *registration.Service
+	auth       *auth.Service
+	users      *repositories.UserRepository
+	mailer     *mailer.Service
+	audit      *audit.Logger
+	workspaces *workspace.Service
+	// ssoEnforced reports whether password login is disabled for a user; see AuthHandler.SetSSOEnforcement.
+	ssoEnforced func(*models.User) bool
+}
+
+// SetInvitations wires sign-up from a workspace invitation (nil-safe: the endpoints refuse).
+func (h *RegisterHandler) SetInvitations(ws *workspace.Service, ssoEnforced func(*models.User) bool) {
+	h.workspaces, h.ssoEnforced = ws, ssoEnforced
 }
 
 func NewRegisterHandler(reg *registration.Service, a *auth.Service, users *repositories.UserRepository, m *mailer.Service, auditLog *audit.Logger) *RegisterHandler {
@@ -92,6 +102,7 @@ func (h *RegisterHandler) Register(c *okapi.Context, req *RegisterRequest) error
 		PasswordHash: string(hash),
 		Role:         models.SystemRoleUser,
 		Active:       true,
+		SignupSource: models.SignupSourceSelf,
 	}
 	if !h.reg.RequiresVerification() {
 		now := time.Now()
@@ -183,4 +194,129 @@ func (h *RegisterHandler) pendingResponse() RegisterResponse {
 		}
 	}
 	return RegisterResponse{Message: "Your account is ready. You can sign in now."}
+}
+
+var errInvalidInvitation = errors.New("this invitation is invalid or has expired")
+
+// InvitationTokenRequest carries an invitation token in the body, keeping it out of access logs.
+type InvitationTokenRequest struct {
+	Body struct {
+		Token string `json:"token" required:"true"`
+	} `json:"body"`
+}
+
+// InvitationPreviewResponse describes an invitation to the holder of its token, and how they can
+// accept it.
+type InvitationPreviewResponse struct {
+	workspace.InvitationPreview
+	// SignupAllowed means an invitee without an account may create one from this invitation.
+	SignupAllowed bool `json:"signup_allowed"`
+	// SSORequired means the account must come from single sign-on, not a password.
+	SSORequired bool `json:"sso_required"`
+}
+
+// PreviewInvitation describes a pending invitation. One answer for unknown, expired and used tokens.
+func (h *RegisterHandler) PreviewInvitation(c *okapi.Context, req *InvitationTokenRequest) error {
+	if h.workspaces == nil {
+		return c.AbortNotFound(errInvalidInvitation.Error())
+	}
+	p, err := h.workspaces.PreviewInvitation(strings.TrimSpace(req.Body.Token))
+	if err != nil {
+		return c.AbortNotFound(errInvalidInvitation.Error())
+	}
+	sso := h.invitationSSORequired(p.OrganizationID)
+	return ok(c, InvitationPreviewResponse{
+		InvitationPreview: *p,
+		SSORequired:       sso,
+		SignupAllowed:     !p.AccountExists && !sso && h.reg.InvitationSignupEnabled(),
+	})
+}
+
+func (h *RegisterHandler) invitationSSORequired(orgID uint) bool {
+	if h.ssoEnforced == nil {
+		return false
+	}
+	u := &models.User{Role: models.SystemRoleUser, Kind: models.UserKindHuman}
+	if orgID != 0 {
+		u.OrganizationID = &orgID
+	}
+	return h.ssoEnforced(u)
+}
+
+// RegisterFromInvitationRequest is the sign-up form reached from an invitation. The email is the
+// invited one and cannot be chosen.
+type RegisterFromInvitationRequest struct {
+	Body struct {
+		Token    string `json:"token" required:"true"`
+		Name     string `json:"name" required:"true"`
+		Password string `json:"password" required:"true"`
+	} `json:"body"`
+}
+
+// RegisterFromInvitationResponse names the workspace the new account joined.
+type RegisterFromInvitationResponse struct {
+	WorkspaceID   uint   `json:"workspace_id"`
+	WorkspaceName string `json:"workspace_name"`
+	Message       string `json:"message"`
+}
+
+// RegisterFromInvitation creates an account from a workspace invitation and joins it. Open while
+// self-service sign-up is closed: the invitation is the authorization.
+func (h *RegisterHandler) RegisterFromInvitation(c *okapi.Context, req *RegisterFromInvitationRequest) error {
+	if h.workspaces == nil || !h.reg.InvitationSignupEnabled() {
+		return c.AbortWithError(403, errors.New("signing up from an invitation is not available on this platform; ask an administrator to create your account"))
+	}
+	token := strings.TrimSpace(req.Body.Token)
+	name := strings.TrimSpace(req.Body.Name)
+	if name == "" {
+		return c.AbortBadRequest("a name is required")
+	}
+	if len([]rune(req.Body.Password)) < MinRegistrationPasswordLen {
+		return c.AbortBadRequest("password must be at least 12 characters")
+	}
+	p, err := h.workspaces.PreviewInvitation(token)
+	if err != nil {
+		return c.AbortBadRequest(errInvalidInvitation.Error())
+	}
+	if h.invitationSSORequired(p.OrganizationID) {
+		return c.AbortWithError(403, errors.New("this organization signs in with single sign-on; use it to create your account"))
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Body.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return c.AbortInternalServerError("failed to hash password", err)
+	}
+	// The token reached the invited mailbox (Invite hides it from the inviter whenever mail can be
+	// sent), which proves the address.
+	now := time.Now()
+	user := &models.User{
+		Name: name, PasswordHash: string(hash), Role: models.SystemRoleUser,
+		Active: true, EmailVerifiedAt: &now,
+	}
+	ws, err := h.workspaces.RegisterFromInvitation(token, user)
+	if err != nil {
+		var qe interface{ Code() string }
+		if errors.As(err, &qe) {
+			return c.AbortWithError(403, err)
+		}
+		if errors.Is(err, workspace.ErrInvalidInvite) {
+			return c.AbortBadRequest(errInvalidInvitation.Error())
+		}
+		return c.AbortInternalServerError("failed to create account", err)
+	}
+	h.audit.Record(audit.Entry{
+		ActorID: &user.ID, Action: "auth.register", TargetType: "user",
+		TargetID: user.Username, IP: c.RealIP(),
+		Metadata: map[string]any{"email": user.Email, "source": models.SignupSourceInvitation, "workspace_id": ws.ID},
+	})
+	h.audit.Record(audit.Entry{
+		ActorID: &user.ID, WorkspaceID: &ws.ID, Action: "workspace.invite_accept",
+		TargetType: "workspace", TargetID: strconv.Itoa(int(ws.ID)), IP: c.RealIP(),
+	})
+	if h.mailer != nil {
+		h.mailer.SendWelcome(user.Email, user.Name)
+	}
+	return created(c, RegisterFromInvitationResponse{
+		WorkspaceID: ws.ID, WorkspaceName: ws.DisplayName,
+		Message: "Your account is ready. Sign in to open " + ws.DisplayName + ".",
+	})
 }

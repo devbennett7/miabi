@@ -227,6 +227,12 @@ type Config struct {
 	//   MIABI_ALLOWED_SIGNUP_DOMAINS       comma-separated, e.g. "acme.com,acme.co.uk"
 	RequireEmailVerification string
 	AllowedSignupDomains     string
+	// Who may create workspaces and whether invitees can sign up, pinned the same way:
+	//
+	//   MIABI_WORKSPACE_CREATION           "anyone" | "except_invited" | "admins_only"
+	//   MIABI_INVITATION_SIGNUP_ENABLED    "true" | "false"
+	WorkspaceCreation       string
+	InvitationSignupEnabled string
 
 	// ControlManagerMode pins the control manager's mode, MIABI_CONTROL_MANAGER_MODE ("observe" | "off"). Empty
 	// leaves it to Platform Settings.
@@ -644,6 +650,8 @@ func New() *Config {
 		RegistrationEnabled:        goutils.EnvBool("MIABI_REGISTRATION_ENABLED", false),
 		RequireEmailVerification:   goutils.Env("MIABI_REQUIRE_EMAIL_VERIFICATION", ""),
 		AllowedSignupDomains:       goutils.Env("MIABI_ALLOWED_SIGNUP_DOMAINS", ""),
+		WorkspaceCreation:          goutils.Env("MIABI_WORKSPACE_CREATION", ""),
+		InvitationSignupEnabled:    goutils.Env("MIABI_INVITATION_SIGNUP_ENABLED", ""),
 		ControlManagerMode:         goutils.Env("MIABI_CONTROL_MANAGER_MODE", ""),
 		ExternalBaseDomain:         goutils.Env("MIABI_EXTERNAL_BASE_DOMAIN", ""),
 		ExternalBaseProvider:       goutils.Env("MIABI_EXTERNAL_BASE_PROVIDER", ""),
@@ -742,6 +750,9 @@ func (c *Config) validate() error {
 	// change without a restart. A value that matches nothing must not boot.
 	if err := c.validateRegistry(); err != nil {
 		return err
+	}
+	if c.WorkspaceCreation != "" && !models.ValidWorkspaceCreation(c.WorkspaceCreation) {
+		return fmt.Errorf(`MIABI_WORKSPACE_CREATION must be "anyone", "except_invited" or "admins_only"`)
 	}
 	if c.Env == "dev" {
 		return nil

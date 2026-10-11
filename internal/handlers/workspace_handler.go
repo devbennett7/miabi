@@ -89,7 +89,10 @@ type InvitationCreated struct {
 	ID    uint   `json:"id"`
 	Email string `json:"email"`
 	Role  string `json:"role"`
-	Token string `json:"token"` // returned for delivery; not persisted in plaintext
+	// Token is returned only when the platform cannot send mail. Otherwise the invited mailbox is the
+	// only place it exists, which is what lets an account created from it count as verified.
+	Token     string `json:"token,omitempty"`
+	EmailSent bool   `json:"email_sent"`
 }
 
 // Create makes a new workspace owned by the caller.
@@ -105,7 +108,8 @@ func (h *WorkspaceHandler) Create(c *okapi.Context, req *CreateWorkspaceRequest)
 	}
 	ws, err := h.svc.Create(userID, display, handle, req.Body.Description)
 	if err != nil {
-		if errors.Is(err, workspace.ErrWorkspaceLimitReached) || errors.Is(err, workspace.ErrOrgWorkspaceLimitReached) {
+		if errors.Is(err, workspace.ErrWorkspaceCreationNotAllowed) || errors.Is(err, workspace.ErrWorkspaceLimitReached) ||
+			errors.Is(err, workspace.ErrOrgWorkspaceLimitReached) {
 			return c.AbortWithError(403, err)
 		}
 		return c.AbortInternalServerError("failed to create workspace", err)
@@ -319,8 +323,7 @@ func (h *WorkspaceHandler) Invite(c *okapi.Context, req *InviteRequest) error {
 		return h.mapWorkspaceErr(c, err)
 	}
 	h.record(c, wsID, "workspace.invite", "invitation", strconv.Itoa(int(inv.ID)))
-	// Email the invitee an accept link (best-effort, async); the raw token is also
-	// returned below so the UI can surface a copyable link.
+	// Email the invitee an accept link (best-effort, async).
 	var wsName, inviterName string
 	if ws, err := h.svc.Get(wsID); err == nil {
 		wsName = ws.DisplayName
@@ -329,7 +332,13 @@ func (h *WorkspaceHandler) Invite(c *okapi.Context, req *InviteRequest) error {
 		inviterName = inviter.Name
 	}
 	h.mailer.SendWorkspaceInvitation(inv.Email, wsName, inviterName, string(inv.Role), raw, inv.ExpiresAt)
-	return created(c, InvitationCreated{ID: inv.ID, Email: inv.Email, Role: string(inv.Role), Token: raw})
+	out := InvitationCreated{ID: inv.ID, Email: inv.Email, Role: string(inv.Role)}
+	if h.mailer != nil && h.mailer.IsConfigured() {
+		out.EmailSent = true
+	} else {
+		out.Token = raw
+	}
+	return created(c, out)
 }
 
 // ListInvitations returns pending invitations (admin+).

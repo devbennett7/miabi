@@ -11,6 +11,9 @@ const routes = [
   { path: '/forgot-password', name: 'forgot-password', component: () => import('@/views/auth/ForgotPassword.vue'), meta: { guest: true, title: 'Reset password' } },
   // Not guest-gated: a reset link from email must work even if a session exists.
   { path: '/reset-password', name: 'reset-password', component: () => import('@/views/auth/ResetPassword.vue'), meta: { title: 'Reset password' } },
+  // The link in an invitation email. Neither guest- nor auth-gated: it signs in, signs up or accepts
+  // depending on who opens it.
+  { path: '/invitations/accept', name: 'accept-invitation', component: () => import('@/views/auth/AcceptInvitation.vue'), meta: { title: 'Invitation' } },
   { path: '/oauth/callback', name: 'oauth-callback', component: () => import('@/views/auth/OAuthCallback.vue'), meta: { title: 'Signing in' } },
   // "Copy login command": intentionally neither guest- nor auth-gated. It forces a
   // fresh re-authentication (even for a signed-in user) before minting a CLI token,

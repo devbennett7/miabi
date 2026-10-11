@@ -26,6 +26,8 @@ var (
 	ErrDefaultProtected = errors.New("the default organization cannot be deleted")
 	ErrNotEmpty         = errors.New("the organization still holds workspaces or users")
 	ErrInvalidMax       = errors.New("max_workspaces is -1 (unlimited) or a count of 0 or more")
+	// ErrInvalidWorkspaceCreation rejects an unknown workspace creation mode.
+	ErrInvalidWorkspaceCreation = errors.New(`workspace_creation must be "anyone", "except_invited" or "admins_only"`)
 	// ErrClusterNotOurs guards a default location the organization cannot place in.
 	ErrClusterNotOurs = errors.New("that location is not one this organization can place in")
 )
@@ -106,6 +108,8 @@ type CreateInput struct {
 	// inherits the platform default.
 	MaxWorkspacesPerUser           *int
 	MaxWorkspaceMembershipsPerUser *int
+	// WorkspaceCreation is who may create workspaces in the org; nil inherits the platform setting.
+	WorkspaceCreation *string
 }
 
 // Create makes an organization. Unlike a workspace handle it is not auto-suffixed on collision: an
@@ -134,11 +138,16 @@ func (s *Service) Create(in CreateInput) (*models.Organization, error) {
 	if err != nil {
 		return nil, err
 	}
+	creation, err := validCreation(in.WorkspaceCreation)
+	if err != nil {
+		return nil, err
+	}
 	org := &models.Organization{
 		Name: name, DisplayName: display,
 		OwnerUserID: in.OwnerUserID, MaxWorkspaces: max,
 		MaxWorkspacesPerUser:           perUser,
 		MaxWorkspaceMembershipsPerUser: perUserJoined,
+		WorkspaceCreation:              creation,
 	}
 	if err := s.repo.Create(org); err != nil {
 		return nil, err
@@ -201,6 +210,10 @@ type UpdateInput struct {
 	MaxWorkspaceMembershipsPerUser     *int
 	InheritWorkspacesPerUser           bool
 	InheritWorkspaceMembershipsPerUser bool
+	// WorkspaceCreation sets the org's creation mode; InheritWorkspaceCreation clears it back to
+	// the platform setting.
+	WorkspaceCreation        *string
+	InheritWorkspaceCreation bool
 	// ClearDefaultCluster releases the org's default location, which a nil DefaultClusterID cannot
 	// express on its own.
 	ClearDefaultCluster bool
@@ -244,6 +257,16 @@ func (s *Service) Update(id uint, in UpdateInput) (*models.Organization, error) 
 			return nil, err
 		}
 		org.MaxWorkspaceMembershipsPerUser = v
+	}
+	switch {
+	case in.InheritWorkspaceCreation:
+		org.WorkspaceCreation = nil
+	case in.WorkspaceCreation != nil:
+		v, err := validCreation(in.WorkspaceCreation)
+		if err != nil {
+			return nil, err
+		}
+		org.WorkspaceCreation = v
 	}
 	switch {
 	case in.ClearDefaultCluster:
@@ -471,4 +494,16 @@ func (s *Service) Labels(ids []uint) map[uint]string {
 // IsNotFound reports a missing row, so callers can map a repository error without importing gorm.
 func IsNotFound(err error) bool {
 	return errors.Is(err, ErrNotFound) || errors.Is(err, gorm.ErrRecordNotFound)
+}
+
+// validCreation checks an optional workspace creation mode; nil stays nil (inherit).
+func validCreation(mode *string) (*string, error) {
+	if mode == nil {
+		return nil, nil
+	}
+	m := strings.TrimSpace(*mode)
+	if !models.ValidWorkspaceCreation(m) {
+		return nil, ErrInvalidWorkspaceCreation
+	}
+	return &m, nil
 }

@@ -1,5 +1,5 @@
 import api from './client'
-import type { ApiResponse, AuthResponse, AuthStatus, RegisterInput, RegisterResult, LoginTokenResponse, RecoveryCodes, Session, TwoFactorSetup, User, UserPreferences, UserPreferencesInput } from './types'
+import type { ApiResponse, AuthResponse, AuthStatus, InvitationPreview, RegisterFromInvitationResult, RegisterInput, RegisterResult, LoginTokenResponse, RecoveryCodes, Session, TwoFactorSetup, User, UserPreferences, UserPreferencesInput } from './types'
 
 export const authApi = {
   // Advertises which auth features are enabled (e.g. self-service password
@@ -9,6 +9,12 @@ export const authApi = {
   },
   register(input: RegisterInput) {
     return api.post<ApiResponse<RegisterResult>>('/auth/register', input)
+  },
+  previewInvitation(token: string) {
+    return api.post<ApiResponse<InvitationPreview>>('/auth/invitations/preview', { token })
+  },
+  registerFromInvitation(input: { token: string; name: string; password: string }) {
+    return api.post<ApiResponse<RegisterFromInvitationResult>>('/auth/register/invitation', input)
   },
   verifyEmail(token: string) {
     return api.post<ApiResponse<RegisterResult>>('/auth/verify-email', { token })
