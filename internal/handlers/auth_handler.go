@@ -27,6 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/settings"
 	"github.com/miabi-io/miabi/internal/services/twofactor"
 	"github.com/miabi-io/miabi/internal/services/usersettings"
+	"github.com/miabi-io/miabi/internal/services/workspace"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 )
 
@@ -50,7 +51,8 @@ type AuthHandler struct {
 	branding *branding.Service
 	ee       enterprise.EE
 	// registration decides whether the sign-in page offers a sign-up link.
-	registration *registration.Service
+	registration   *registration.Service
+	creationPolicy func(userID uint) workspace.CreationPolicy
 	// enforceSSO reports whether a user must sign in via SSO (password login blocked). Set by
 	// SetSSOEnforcement; nil means never enforced. Platform admins are exempt by the closure so a
 	// misconfigured IdP can't lock everyone out.
@@ -91,6 +93,11 @@ func (h *AuthHandler) SetBranding(b *branding.Service, ee enterprise.EE) {
 
 // SetRegistration wires the sign-up policy (nil-safe: unset reports closed).
 func (h *AuthHandler) SetRegistration(r *registration.Service) { h.registration = r }
+
+// SetCreationPolicy wires the workspace creation policy reported on /me (nil-safe: omitted).
+func (h *AuthHandler) SetCreationPolicy(p func(userID uint) workspace.CreationPolicy) {
+	h.creationPolicy = p
+}
 
 func NewAuthHandler(a *auth.Service, users *repositories.UserRepository, sessions *repositories.SessionRepository, auditLog *audit.Logger, settingsProvider *settings.Provider, devMode, passwordResetEnabled bool) *AuthHandler {
 	return &AuthHandler{auth: a, users: users, sessions: sessions, audit: auditLog, settings: settingsProvider, devMode: devMode, passwordResetEnabled: passwordResetEnabled}
@@ -234,6 +241,9 @@ type UserProfile struct {
 	DefaultWorkspaceID *uint `json:"default_workspace_id,omitempty"`
 	// Preferences are the user's console settings. Populated on /me only.
 	Preferences *models.UserSetting `json:"preferences,omitempty"`
+	// WorkspaceCreation says whether the user may create a workspace, so clients hide the action
+	// rather than offer one that fails. Populated on /me only.
+	WorkspaceCreation *workspace.CreationPolicy `json:"workspace_creation,omitempty"`
 }
 
 // AuthContext reports the principal behind the current request: how it
@@ -644,6 +654,10 @@ func (h *AuthHandler) Me(c *okapi.Context) error {
 		if prefs, err := h.userSettings.Get(user.ID); err == nil {
 			profile.Preferences = prefs
 		}
+	}
+	if h.creationPolicy != nil {
+		p := h.creationPolicy(user.ID)
+		profile.WorkspaceCreation = &p
 	}
 	return ok(c, profile)
 }

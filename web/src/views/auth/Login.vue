@@ -13,6 +13,7 @@ import { apiErrorMessage } from '@/api/client'
 import { authApi } from '@/api/auth'
 import { oauthApi, authorizeUrl } from '@/api/oauth'
 import type { PublicProvider } from '@/api/types'
+import { pendingInvite } from '@/utils/pendingInvite'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -127,7 +128,7 @@ async function submit() {
       router.push({ name: 'change-password' })
       return
     }
-    router.push('/')
+    router.push(pendingInvite() ? { name: 'accept-invitation' } : '/')
   } catch (e) {
     error.value = apiErrorMessage(e, t(step.value === 'twofactor' ? 'login.invalidCode' : 'login.invalidCredentials'))
   } finally {

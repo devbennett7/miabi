@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
 import { copyText } from '@/utils/clipboard'
 import AppModal from '@/components/AppModal.vue'
@@ -13,6 +14,7 @@ const { t } = useI18n()
 const traitOf = (w: { system?: boolean; privileged?: boolean }) => workspaceTrait(w, t)
 const route = useRoute()
 const ws = useWorkspaceStore()
+const auth = useAuthStore()
 const notify = useNotificationStore()
 
 const showCreate = ref(false)
@@ -70,7 +72,7 @@ function roleBadgeClass(role?: string) {
 
 onMounted(() => {
   if (!ws.loaded) ws.fetchWorkspaces().catch(() => {})
-  if (route.query.create) openCreate()
+  if (route.query.create && auth.canCreateWorkspace) openCreate()
 })
 </script>
 
@@ -78,7 +80,7 @@ onMounted(() => {
   <div>
     <div class="page-header">
       <h1>{{ $t('workspaces.workspaces') }}</h1>
-      <button class="btn btn-primary" @click="openCreate">
+      <button v-if="auth.canCreateWorkspace" class="btn btn-primary" @click="openCreate">
         <span class="mdi mdi-plus"></span>{{ $t('workspaces.newWorkspace') }}</button>
     </div>
 
@@ -86,8 +88,9 @@ onMounted(() => {
       <div class="empty-state">
         <span class="mdi mdi-briefcase-outline" style="font-size: 44px; color: var(--text-muted)"></span>
         <h3>{{ $t('switcher.empty') }}</h3>
-        <p>{{ $t('workspaces.workspacesGroupYourApplicationsDatabases') }}</p>
-        <button class="btn btn-primary mt-4" @click="openCreate">{{ $t('workspaces.createYourFirstWorkspace') }}</button>
+        <p v-if="auth.canCreateWorkspace">{{ $t('workspaces.workspacesGroupYourApplicationsDatabases') }}</p>
+        <p v-else>{{ $t('workspaceLayout.askForAnInvitation') }}</p>
+        <button v-if="auth.canCreateWorkspace" class="btn btn-primary mt-4" @click="openCreate">{{ $t('workspaces.createYourFirstWorkspace') }}</button>
       </div>
     </div>
 

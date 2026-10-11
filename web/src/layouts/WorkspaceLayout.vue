@@ -55,10 +55,9 @@ function createWorkspace() {
 }
 
 onMounted(async () => {
-  // A cached profile from before preferences existed has no `preferences` key, so
-  // refresh it — the workspace store and the theme both read fields that only a
-  // current /me carries.
-  if (!auth.user || !auth.user.preferences) await auth.fetchUser()
+  // A cached profile from an older build lacks fields only a current /me carries (preferences,
+  // workspace_creation), which the workspace store, the theme and the create actions read.
+  if (!auth.user || !auth.user.preferences || !auth.user.workspace_creation) await auth.fetchUser()
   license.load().catch(() => { })
   try {
     await ws.fetchWorkspaces()
@@ -98,7 +97,12 @@ onMounted(async () => {
             </button>
           </li>
         </ul>
-        <button class="btn btn-secondary mt-4" @click="createWorkspace">{{ $t('workspaceLayout.orCreateYourOwnWorkspace') }}</button>
+        <button v-if="auth.canCreateWorkspace" class="btn btn-secondary mt-4" @click="createWorkspace">{{ $t('workspaceLayout.orCreateYourOwnWorkspace') }}</button>
+      </template>
+      <template v-else-if="!auth.canCreateWorkspace">
+        <span class="mdi mdi-briefcase-outline" style="font-size: 48px; color: var(--text-muted)"></span>
+        <h3>{{ $t('switcher.empty') }}</h3>
+        <p>{{ $t('workspaceLayout.askForAnInvitation') }}</p>
       </template>
       <template v-else>
         <span class="mdi mdi-briefcase-plus-outline" style="font-size: 48px; color: var(--text-muted)"></span>

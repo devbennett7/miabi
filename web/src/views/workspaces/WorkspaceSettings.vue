@@ -478,9 +478,11 @@ async function sendInvite() {
   if (!invite.value.email.trim()) return
   try {
     const res = (await memberApi.invite(wsId.value, invite.value.email.trim(), invite.value.role)).data.data
-    inviteToken.value = res.token
+    // The API returns the token only when it could not be mailed; then the link is the only way in.
+    inviteToken.value = res.token ? `${window.location.origin}/invitations/accept?token=${encodeURIComponent(res.token)}` : null
     invite.value.email = ''
-    notify.success(t('notify.wsSettings.inviteCreated'))
+    if (res.email_sent) notify.success(t('notify.wsSettings.inviteEmailed', { email: res.email }))
+    else notify.success(t('notify.wsSettings.inviteCreated'))
     loadMembers()
   } catch (e) {
     notify.apiError(e)

@@ -2694,12 +2694,13 @@
     "wsSettings": {
       "backupSaved": "Paramètres de sauvegarde enregistrés",
       "deleted": "Espace de travail supprimé",
-      "inviteCreated": "Invitation créée — partagez le jeton ci-dessous",
+      "inviteCreated": "Invitation créée — partagez le lien ci-dessous",
+      "inviteEmailed": "Invitation envoyée à {email}",
       "locationUpdated": "Emplacement par défaut mis à jour",
       "memberRemoved": "Membre retiré",
       "nameUpdated": "Nom de l’espace de travail mis à jour",
       "roleUpdated": "Rôle mis à jour",
-      "tokenCopied": "Jeton copié",
+      "tokenCopied": "Lien copié",
       "updated": "Espace de travail mis à jour"
     },
     "serviceAccounts": {
@@ -3120,6 +3121,28 @@
     "updateTheNameShownAcross": "Mettez à jour le nom affiché dans Miabi. Votre e-mail est géré par un administrateur.",
     "username": "Nom d’utilisateur",
     "yourUniqueHandleLowercaseLetters": "Votre identifiant unique — lettres minuscules, chiffres et tirets. Utilisé comme identifiant d’annuaire."
+  },
+  "acceptInvite": {
+    "loading": "Ouverture de votre invitation…",
+    "title": "Rejoindre {workspace}",
+    "subtitle": "Vous êtes invité en tant que {role}.",
+    "subtitleBy": "{name} vous a invité en tant que {role}.",
+    "invalidTitle": "Invitation indisponible",
+    "invalidBody": "Ce lien d’invitation est invalide, a expiré ou a déjà été utilisé. Demandez-en un nouveau à la personne qui vous a invité.",
+    "openConsole": "Ouvrir la console",
+    "join": "Rejoindre {workspace}",
+    "otherAccount": "Cette invitation est destinée à {invited}, mais vous êtes connecté en tant que {current}. Déconnectez-vous puis rouvrez le lien.",
+    "signOut": "Se déconnecter",
+    "signInToAccept": "{email} a déjà un compte. Connectez-vous pour accepter l’invitation.",
+    "signIn": "Se connecter",
+    "ssoRequired": "Cette organisation se connecte par authentification unique. Continuez avec le SSO : l’invitation sera acceptée une fois connecté.",
+    "continueWithSso": "Continuer avec le SSO",
+    "createAndJoin": "Créer le compte et rejoindre",
+    "passwordHint": "Au moins {n} caractères.",
+    "passwordTooShort": "Le mot de passe doit contenir au moins {n} caractères.",
+    "noSignup": "Il n’existe pas encore de compte pour {email}, et cette plateforme ne crée pas de comptes à partir d’invitations. Demandez à un administrateur de créer le vôtre.",
+    "acceptFailed": "Impossible d’accepter l’invitation.",
+    "signupFailed": "Impossible de créer votre compte."
   },
   "register": {
     "doneTitle": "Compte créé",
@@ -3941,6 +3964,7 @@
     "invitedAs": "Invité en tant que {role}",
     "invitedBy": "par {name}",
     "orCreateYourOwnWorkspace": "Ou créez votre propre espace de travail",
+    "askForAnInvitation": "Vous n’avez pas encore d’espace de travail. Demandez à un administrateur de vous y inviter.",
     "youVeBeenInvited": "Vous avez été invité"
   },
   "workspaces": {
@@ -3994,9 +4018,9 @@
     "endpoint": "Point de terminaison",
     "general": "Général",
     "handleHint": "L’identifiant unique dans les URL de l’espace de travail et son espace de noms {docker}. Lettres minuscules, chiffres et tirets. {warning}, et les noms réservés ne sont pas autorisés.",
-    "invitationToken": "Jeton d’invitation",
+    "invitationToken": "Lien d’invitation",
     "inviteAMember": "Inviter un membre",
-    "inviteTokenHint": "Partagez ce jeton avec la personne invitée — il n’est affiché qu’une seule fois.",
+    "inviteTokenHint": "Cette plateforme ne peut pas envoyer d’e-mails : partagez vous-même ce lien avec la personne invitée. Il n’est affiché qu’une seule fois.",
     "inviteeEmail": "E-mail de la personne invitée",
     "inviteeRole": "Rôle de la personne invitée",
     "limitsAreShownForReference": "Les limites sont indiquées à titre indicatif ; l’application des quotas est désactivée sur toute la plateforme.",

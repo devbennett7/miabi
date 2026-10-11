@@ -84,6 +84,8 @@ type Service struct {
 	memberOverrideEntitled func() bool
 	// orgLimitsEntitled reports whether organization-scoped limits are licensed.
 	orgLimitsEntitled func() bool
+	// creationMode returns the platform workspace creation mode; see SetCreationPolicy.
+	creationMode func() string
 }
 
 func NewService(repo *repositories.WorkspaceRepository, users *repositories.UserRepository, nets NetworkEnsurer) *Service {
@@ -310,6 +312,9 @@ func (s *Service) checkMemberCapacity(workspaceID uint) error {
 // unique name — the URL and docker handle — derived from displayName when blank. The handle is always made
 // unique and non-reserved by suffixing, so creation never fails on a collision.
 func (s *Service) Create(ownerID uint, displayName, handle, description string) (*models.Workspace, error) {
+	if err := s.CanCreate(ownerID); err != nil {
+		return nil, err
+	}
 	if err := s.canOwnAnother(ownerID); err != nil {
 		return nil, err
 	}

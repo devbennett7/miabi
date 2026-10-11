@@ -266,7 +266,7 @@ export const memberApi = {
   remove: (ws: number, userId: number) => api.delete<ApiResponse<{ message: string }>>(`${w(ws)}/members/${userId}`),
   invitations: (ws: number) => api.get<ApiResponse<Invitation[]>>(`${w(ws)}/invitations`),
   invite: (ws: number, email: string, role: string) =>
-    api.post<ApiResponse<{ id: number; email: string; role: string; token: string }>>(`${w(ws)}/invitations`, { email, role }),
+    api.post<ApiResponse<{ id: number; email: string; role: string; token?: string; email_sent: boolean }>>(`${w(ws)}/invitations`, { email, role }),
   acceptInvite: (token: string) => api.post<ApiResponse<unknown>>('/workspaces/invitations/accept', { token }),
   auditLogs: (ws: number, page = 0, size = 20, order = 'desc', from = '', to = '') =>
     api.get<PageableResponse<AuditLog>>(`${w(ws)}/audit-logs`, {

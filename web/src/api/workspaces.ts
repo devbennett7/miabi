@@ -71,6 +71,9 @@ export const workspaceApi = {
   myInvitations() {
     return api.get<ApiResponse<PendingInvitation[]>>('/workspaces/invitations')
   },
+  acceptInvitationToken(token: string) {
+    return api.post<ApiResponse<Workspace>>('/workspaces/invitations/accept', { token })
+  },
   acceptInvitation(id: number) {
     return api.post<ApiResponse<Workspace>>(`/workspaces/invitations/${id}/accept`)
   },

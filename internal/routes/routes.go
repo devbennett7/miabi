@@ -287,6 +287,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	settingsProvider := settings.NewProvider(settingRepo, map[string]string{
 		settings.KeyRequireEmailVerification: cfg.RequireEmailVerification,
 		settings.KeyAllowedSignupDomains:     cfg.AllowedSignupDomains,
+		settings.KeyWorkspaceCreation:        cfg.WorkspaceCreation,
+		settings.KeyInvitationSignupEnabled:  cfg.InvitationSignupEnabled,
 		settings.KeyControlManagerMode:       cfg.ControlManagerMode,
 	})
 	oauthService := oauth.NewService(oauthRepo, userRepo, redisClient)
@@ -432,6 +434,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		},
 		func() bool { return ee.Has(enterprise.FlagUserWorkspaceLimit) },
 	)
+	workspaceService.SetCreationPolicy(func() string {
+		return settingsProvider.String(settings.KeyWorkspaceCreation, settings.DefaultWorkspaceCreation)
+	})
 	// Per-user membership limit (workspaces JOINED as a non-owner member): global
 	// max_workspace_memberships_per_user is OSS; the per-user override is gated by
 	// the Enterprise user_workspace_membership_limit entitlement.
@@ -1480,6 +1485,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		return twofactor.Issuer(name, cfg.DeploymentURL())
 	})
 	r.h.auth.SetRegistration(registrationService)
+	r.h.auth.SetCreationPolicy(workspaceService.CreationPolicy)
 	authService.SetEmailVerifications(repositories.NewEmailVerificationRepository(db))
 	// An account that never picked an accent follows the operator's; an enforced
 	// brand accent overrides every account. Has, not Mutable: expiry keeps the lock.
@@ -1656,13 +1662,15 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 
 	// Platform admins are always exempt — a misconfigured IdP must never lock the
 	// whole instance out.
-	r.h.auth.SetSSOEnforcement(func(user *models.User) bool {
+	ssoEnforced := func(user *models.User) bool {
 		if user.IsAdmin() {
 			return false
 		}
 		org, err := orgRepo.FindDefault()
 		return err == nil && org.EnforceSSO
-	})
+	}
+	r.h.auth.SetSSOEnforcement(ssoEnforced)
+	r.h.register.SetInvitations(workspaceService, ssoEnforced)
 	// Enterprise LDAP/AD fall-through on the primary login endpoint. No-op in
 	// Community (directoryService.Login returns (nil,nil) when ee.LDAP() is nil).
 	r.h.auth.SetDirectoryLogin(directoryService.Login)

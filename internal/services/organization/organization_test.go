@@ -27,6 +27,7 @@ type orgRow struct {
 	// Per-user caps; nil inherits the platform default.
 	MaxWorkspacesPerUser           *int
 	MaxWorkspaceMembershipsPerUser *int
+	WorkspaceCreation              *string
 	DefaultClusterID               *uint
 	EnforceSSO                     bool
 	CreatedAt                      time.Time

@@ -12,6 +12,8 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => !!user.value)
   const isAdmin = computed(() => user.value?.role === 'admin')
+  // Mirrors the server's creation policy so the console hides an action that would be refused.
+  const canCreateWorkspace = computed(() => user.value?.workspace_creation?.allowed ?? true)
 
   // A pending forced password change: the credentials were valid but the account
   // has an admin-set/reset password. We hold the short-lived reset token (in
@@ -110,5 +112,5 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('mb_user', JSON.stringify(res.data.data))
   }
 
-  return { user, isAuthenticated, isAdmin, pendingReset, login, completeReset, cancelReset, logout, clearSession, fetchUser, setUser, updateName, updateProfile, dismissOnboarding }
+  return { user, isAuthenticated, isAdmin, canCreateWorkspace, pendingReset, login, completeReset, cancelReset, logout, clearSession, fetchUser, setUser, updateName, updateProfile, dismissOnboarding }
 })

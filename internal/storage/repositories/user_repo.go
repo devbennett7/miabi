@@ -35,6 +35,12 @@ func (r *UserRepository) SetWorkspaceLimit(userID uint, limit *int) error {
 		Select("workspace_limit").Update("workspace_limit", limit).Error
 }
 
+// SetCanCreateWorkspaces sets (or clears, when nil) a user's workspace creation override.
+func (r *UserRepository) SetCanCreateWorkspaces(userID uint, allowed *bool) error {
+	return r.db.Model(&models.User{}).Where("id = ?", userID).
+		Select("can_create_workspaces").Update("can_create_workspaces", allowed).Error
+}
+
 // SetWorkspaceMembershipLimit sets (or clears, when nil) a user's per-user
 // workspace-membership override — the join counterpart of SetWorkspaceLimit.
 func (r *UserRepository) SetWorkspaceMembershipLimit(userID uint, limit *int) error {

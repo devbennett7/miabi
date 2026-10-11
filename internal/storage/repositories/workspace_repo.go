@@ -4,6 +4,7 @@
 package repositories
 
 import (
+	"errors"
 	"strings"
 	"time"
 
@@ -399,4 +400,28 @@ func (r *WorkspaceRepository) FindInvitationByID(id uint) (*models.WorkspaceInvi
 // IDByUID resolves a workspace's uid to its numeric id.
 func (r *WorkspaceRepository) IDByUID(uid string) (uint, error) {
 	return idByUID[models.Workspace](r.db, uid)
+}
+
+// ErrInvitationClaimed means an invitation stopped being pending between read and claim.
+var ErrInvitationClaimed = errors.New("invitation is no longer pending")
+
+// CreateUserFromInvitation creates user, adds them to the invitation's workspace with its role and
+// marks the invitation accepted, all or nothing, so a failed join never leaves an account behind.
+func (r *WorkspaceRepository) CreateUserFromInvitation(user *models.User, inv *models.WorkspaceInvitation) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&models.WorkspaceInvitation{}).
+			Where("id = ? AND status = ?", inv.ID, models.InvitationStatusPending).
+			Update("status", models.InvitationStatusAccepted)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected != 1 {
+			return ErrInvitationClaimed
+		}
+		if err := tx.Create(user).Error; err != nil {
+			return err
+		}
+		inv.Status = models.InvitationStatusAccepted
+		return tx.Create(&models.WorkspaceMember{WorkspaceID: inv.WorkspaceID, UserID: user.ID, Role: inv.Role}).Error
+	})
 }

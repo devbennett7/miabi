@@ -37,7 +37,13 @@ const (
 	// KeyMaxWorkspaceMembershipsPerUser caps how many workspaces a user may JOIN
 	// as a non-owner member (0 = unlimited).
 	KeyMaxWorkspaceMembershipsPerUser = "max_workspace_memberships_per_user"
-	KeyAuditLogRetentionDays          = "audit_log_retention_days"
+	// KeyWorkspaceCreation is the platform's workspace creation mode (models.WorkspaceCreation*), the
+	// default an organization that sets none falls back to.
+	KeyWorkspaceCreation = "workspace_creation"
+	// KeyInvitationSignupEnabled lets an invitee create their account from the invitation, even while
+	// self-service sign-up is closed: the invitation is the authorization.
+	KeyInvitationSignupEnabled = "invitation_signup_enabled"
+	KeyAuditLogRetentionDays   = "audit_log_retention_days"
 	// Per-application resource caps. 0 = unlimited.
 	KeyMaxCPUCores = "max_cpu_cores"
 	KeyMaxMemoryMB = "max_memory_mb"
@@ -66,6 +72,9 @@ const (
 const (
 	DefaultMaxWorkspacesPerUser           = 10
 	DefaultMaxWorkspaceMembershipsPerUser = -1
+	// DefaultWorkspaceCreation changes nothing for accounts that predate it: none of them signed up
+	// from an invitation.
+	DefaultWorkspaceCreation = models.WorkspaceCreationExceptInvited
 )
 
 var defaults = []models.Setting{
@@ -75,6 +84,8 @@ var defaults = []models.Setting{
 	{Key: KeyDefaultWorkspaceRole, Value: "viewer", Type: models.SettingTypeString},
 	{Key: KeyMaxWorkspacesPerUser, Value: strconv.Itoa(DefaultMaxWorkspacesPerUser), Type: models.SettingTypeInt},
 	{Key: KeyMaxWorkspaceMembershipsPerUser, Value: strconv.Itoa(DefaultMaxWorkspaceMembershipsPerUser), Type: models.SettingTypeInt},
+	{Key: KeyWorkspaceCreation, Value: DefaultWorkspaceCreation, Type: models.SettingTypeString},
+	{Key: KeyInvitationSignupEnabled, Value: "true", Type: models.SettingTypeBool},
 	{Key: KeyAuditLogRetentionDays, Value: "90", Type: models.SettingTypeInt},
 	{Key: KeyMaxCPUCores, Value: "0", Type: models.SettingTypeInt},
 	{Key: KeyMaxMemoryMB, Value: "0", Type: models.SettingTypeInt},

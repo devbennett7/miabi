@@ -10,6 +10,7 @@ import (
 	"github.com/jkaninda/okapi"
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/services/audit"
+	"github.com/miabi-io/miabi/internal/services/workspace"
 	"github.com/miabi-io/miabi/internal/services/wsbackup"
 )
 
@@ -163,6 +164,9 @@ func bundleError(c *okapi.Context, err error, fallback string) error {
 		return c.AbortWithError(409, err)
 	case errors.Is(err, wsbackup.ErrNotFound):
 		return c.AbortNotFound(err.Error())
+	case errors.Is(err, workspace.ErrWorkspaceCreationNotAllowed), errors.Is(err, workspace.ErrWorkspaceLimitReached),
+		errors.Is(err, workspace.ErrOrgWorkspaceLimitReached):
+		return c.AbortWithError(403, err)
 	default:
 		return c.AbortInternalServerError(fallback, err)
 	}

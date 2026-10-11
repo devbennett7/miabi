@@ -36,6 +36,9 @@ type Organization struct {
 	// what an org that sets nothing falls back to.
 	MaxWorkspacesPerUser           *int `json:"max_workspaces_per_user,omitempty"`
 	MaxWorkspaceMembershipsPerUser *int `json:"max_workspace_memberships_per_user,omitempty"`
+	// WorkspaceCreation is who among the org's users may create workspaces (WorkspaceCreation* modes);
+	// nil inherits the platform setting.
+	WorkspaceCreation *string `json:"workspace_creation,omitempty"`
 	// DefaultClusterID is the location the org's new workspaces default to; nil leaves them on the
 	// platform default. An org that owns clusters is confined to them (see Cluster.OrganizationID).
 	DefaultClusterID *uint `json:"default_cluster_id,omitempty" gorm:"index"`

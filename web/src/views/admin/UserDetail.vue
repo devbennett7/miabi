@@ -54,8 +54,23 @@ function parseLimit(s: string): number | null {
   const n = Number(t)
   return Number.isInteger(n) ? n : null
 }
+// Workspace creation override: '' inherits, 'allow'/'deny' override the organization's mode.
+const creation = ref<'' | 'allow' | 'deny'>('')
+function creationValue(c: string): boolean | null {
+  return c === '' ? null : c === 'allow'
+}
+const SIGNUP_SOURCES: Record<string, string> = {
+  self: 'Self-service sign-up',
+  invitation: 'Workspace invitation',
+  admin: 'Created by an administrator',
+  oauth: 'Single sign-on',
+  saml: 'Single sign-on (SAML)',
+  ldap: 'Directory (LDAP)',
+  scim: 'Provisioned (SCIM)',
+}
 const limitsDirty = computed(
   () =>
+    creationValue(creation.value) !== (user.value?.can_create_workspaces ?? null) ||
     parseLimit(ownedLimit.value) !== (user.value?.workspace_limit ?? null) ||
     parseLimit(memberLimit.value) !== (user.value?.workspace_membership_limit ?? null)
 )
@@ -63,6 +78,7 @@ const limitsDirty = computed(
 // Sync the editable fields whenever the loaded user changes.
 watch(user, (u) => {
   ownedLimit.value = u?.workspace_limit == null ? '' : String(u.workspace_limit)
+  creation.value = u?.can_create_workspaces == null ? '' : u.can_create_workspaces ? 'allow' : 'deny'
   memberLimit.value = u?.workspace_membership_limit == null ? '' : String(u.workspace_membership_limit)
 })
 
@@ -73,6 +89,10 @@ async function saveLimits() {
   const m = parseLimit(memberLimit.value)
   busy.value = true
   try {
+    const c = creationValue(creation.value)
+    if (eeOwned.value && c !== (user.value.can_create_workspaces ?? null)) {
+      await adminApi.setWorkspaceCreation(id, c)
+    }
     if (eeOwned.value && o !== (user.value.workspace_limit ?? null)) {
       await adminApi.setWorkspaceLimit(id, o)
     }
@@ -549,6 +569,10 @@ function eventSeverity(e: AdminEvent): string {
             <span class="text-muted">Created</span>
             <span>{{ fmtDate(user.created_at) }}</span>
           </div>
+          <div v-if="user.signup_source" class="detail">
+            <span class="text-muted">Signed up via</span>
+            <span>{{ SIGNUP_SOURCES[user.signup_source] ?? user.signup_source }}</span>
+          </div>
         </div>
       </div>
 
@@ -562,6 +586,17 @@ function eventSeverity(e: AdminEvent): string {
             Per-user overrides of the platform defaults. Leave blank to inherit the platform
             setting; <code>-1</code> = unlimited, <code>0</code> = none.
           </p>
+          <div class="limit-row">
+            <div class="limit-label">
+              <label class="form-label">Can create workspaces</label>
+              <div class="form-hint text-muted">Overrides the organization's workspace creation setting</div>
+            </div>
+            <select v-model="creation" class="form-select limit-input" :disabled="!eeOwned || busy">
+              <option value="">Inherit</option>
+              <option value="allow">Allow</option>
+              <option value="deny">Deny</option>
+            </select>
+          </div>
           <div class="limit-row">
             <div class="limit-label">
               <label class="form-label">Owned workspaces</label>
