@@ -2522,6 +2522,10 @@ export interface Server {
   cordoned?: boolean
   labels?: Record<string, string>
   gateway_deployed_at?: string | null
+  /** Filesystem holding Docker's data root, from the node capacity sweep; 0 until measured. */
+  storage_bytes?: number
+  storage_free_bytes?: number
+  capacity_measured_at?: string | null
   // Cluster (Docker Swarm). Populated only when cluster mode is on; otherwise
   // these stay empty and the node is shown as standalone.
   swarm_node_id?: string
