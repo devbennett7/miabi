@@ -15,7 +15,8 @@
   <a href="#features">Features</a> ·
   <a href="#how-miabi-compares">Comparison</a> ·
   <a href="#architecture">Architecture</a> ·
-  <a href="https://docs.miabi.io">Docs</a>
+  <a href="https://docs.miabi.io">Docs</a> .
+  <a href="https://github.com/miabi-io/examples">Examples</a>
 </p>
 
 <p align="center">

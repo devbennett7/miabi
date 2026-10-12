@@ -27,7 +27,6 @@
 # A stack created before the proxy network was renamed keeps `miabi`: see
 # "Created before miabi-proxy" in README.md for the override it needs.
 #
-# ─────────────────────────────────────────────────────────────────────────────
 # Trade-offs vs. the default Goma stack (compose.yaml) — read before choosing:
 #
 # 1. App routes use Traefik labels you add MANUALLY. Miabi does NOT generate
