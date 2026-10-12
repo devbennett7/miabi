@@ -7,6 +7,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { nodesApi, type CreateNodePayload, type NodeWorkloads, type NodeGPUList, type GPUDevice, type NodeStatusEvent } from '@/api/nodes'
 import { useNodeStatusStream } from './useNodeStatusStream'
 import { clusterApi } from '@/api/cluster'
+import { adminApi } from '@/api/admin'
 
 // MIN_ENGINE_VERSION mirrors docker.MinEngineVersion (Go) — the minimum Docker
 // Engine Miabi supports (the CI engine-matrix floor). A node below it should be
@@ -19,7 +20,7 @@ function engineTooOld(v?: string): boolean {
   return maj < 25
 }
 import { ACCESS_MODES, CONNECTIVITY_TYPES, MIN_AGENT_VERSION, nodeOptionDescription } from '@/constants/node'
-import type { Server, NodeStats, NodeHostMetrics, GatewayStatus, GatewayCandidate, GatewayUpdateProgress, StatsSample, Container, ContainerStat, DockerVolume, DockerNetwork, NodePortUsage, ClusterMember, SwarmTask } from '@/api/types'
+import type { Server, NodeStats, NodeHostMetrics, GatewayStatus, GatewayCandidate, GatewayUpdateProgress, StatsSample, Container, ContainerStat, DockerVolume, DockerNetwork, NodePortUsage, ClusterMember, SwarmTask, StorageClass } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import FieldInfo from '@/components/FieldInfo.vue'
 import { copyText } from '@/utils/clipboard'
@@ -211,6 +212,7 @@ async function load() {
   try {
     const list = (await nodesApi.list()).data.data ?? []
     node.value = list.find((n) => n.id === id) ?? null
+    nodeClusters.value = new Map(list.map((n) => [n.id, n.cluster_id ?? 0]))
     if (!node.value) {
       notify.error(t('notify.common.nodeNotFound'))
       return
@@ -221,6 +223,7 @@ async function load() {
     // may hold no Docker client for — the manager is the only one who can see them).
     await loadClusterMembers()
     await loadNodeTasks()
+    await loadStorageClasses()
     if (connected.value) {
       try {
         stats.value = (await nodesApi.stats(id)).data.data
@@ -509,6 +512,33 @@ const storage = computed(() => {
   const used = total - free
   return { total, free, used, percent: (used / total) * 100 }
 })
+
+// The built-in class is the data-root disk already shown under Resource usage. A shared class is
+// registered on one node but asserted to be the same filesystem across that node's cluster; the
+// class's own cluster_id is not reliably set, so the owning node's cluster is used instead.
+const storageClasses = ref<StorageClass[]>([])
+const nodeClusters = ref(new Map<number, number>())
+const nodeStorageClasses = computed(() => {
+  const n = node.value
+  if (!n) return []
+  return storageClasses.value.filter((c) =>
+    !c.builtin && (c.server_id === n.id || (c.shared && nodeClusters.value.get(c.server_id) === (n.cluster_id ?? 0))),
+  )
+})
+
+async function loadStorageClasses() {
+  try {
+    storageClasses.value = (await adminApi.listStorageClasses()).data.data ?? []
+  } catch {
+    storageClasses.value = []
+  }
+}
+
+function classUsedPercent(c: StorageClass): number | null {
+  if (!c.capacity_bytes) return null
+  const free = Math.min(c.capacity_bytes, c.available_bytes ?? 0)
+  return ((c.capacity_bytes - free) / c.capacity_bytes) * 100
+}
 
 // Helpers
 function cname(c: Container) { return ((c.names && c.names[0]) || c.id).replace(/^\//, '') }
@@ -1106,6 +1136,45 @@ const gwBadge = computed(() => {
           </div>
         </div>
       </template>
+
+      <div v-if="nodeStorageClasses.length" class="card mb-4">
+        <div class="card-header">
+          <h2>Storage classes <span class="text-muted" style="font-weight: 400">{{ nodeStorageClasses.length }}</span></h2>
+          <router-link to="/admin/storage-classes" class="btn btn-sm btn-secondary">Manage</router-link>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>Class</th><th>Path</th><th>Capacity</th><th>Reclaim</th></tr></thead>
+            <tbody>
+              <tr v-for="c in nodeStorageClasses" :key="c.id">
+                <td>
+                  <span class="cell-text">
+                    <span class="cell-title">
+                      {{ c.display_name || c.name }}
+                      <span v-if="c.is_default" class="badge badge-info">default</span>
+                      <span v-if="!c.enabled" class="badge">disabled</span>
+                      <span v-if="c.shared" class="badge" :title="c.server_id === node.id ? 'Same filesystem on every node of the cluster' : 'Registered on ' + (c.server_name || 'another node') + '; same filesystem on every node of the cluster'">shared</span>
+                    </span>
+                    <span class="cell-sub mono">{{ c.name }}</span>
+                  </span>
+                </td>
+                <td><span class="mono">{{ c.path }}</span></td>
+                <td class="class-capacity">
+                  <template v-if="classUsedPercent(c) !== null">
+                    <div class="usage-metric-head">
+                      <span class="cell-sub">{{ fmtSize(c.capacity_bytes! - Math.min(c.capacity_bytes!, c.available_bytes ?? 0)) }} / {{ fmtSize(c.capacity_bytes) }}</span>
+                      <span class="cell-sub">{{ classUsedPercent(c)!.toFixed(0) }}%</span>
+                    </div>
+                    <div class="usage-bar"><div class="usage-fill" :class="{ 'usage-fill-warn': classUsedPercent(c)! >= 85 }" :style="{ width: classUsedPercent(c) + '%' }"></div></div>
+                  </template>
+                  <span v-else class="text-muted">Not measured yet</span>
+                </td>
+                <td>{{ c.reclaim_policy }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       <!-- GPUs: discovered devices + admin enable/share policy. Only rendered when
            platform GPU support is on. Devices arrive disabled until opted in. -->
@@ -1956,6 +2025,7 @@ const gwBadge = computed(() => {
 .usage-bar { height: 6px; border-radius: 9999px; background: var(--bg-tertiary); overflow: hidden; margin: 10px 0 6px; }
 .usage-fill { height: 100%; border-radius: 9999px; background: var(--success-500); transition: width 0.4s ease; }
 .usage-fill-warn { background: var(--warning-500); }
+.class-capacity { min-width: 180px; }
 
 /* Node resource-usage card */
 .usage-card { margin-bottom: 24px; }
