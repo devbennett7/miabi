@@ -168,6 +168,7 @@ Everything in the console is also in the REST API, the CLI, and the Terraform pr
 - **Build runners** — dedicated build machines that keep build load off app-hosting nodes; a co-located runner ships for single-node and homelab use, and an optional "builds require a runner" guarantee keeps builds off production nodes entirely
 - **GitOps** — declarative, pull-based reconciliation from `miabi.io/v1` manifests, plus an imperative one-shot **apply** with dry-run, diff, and prune. No separate controller to run: no Argo CD, no Flux
 - **Git push deploy**, stored Git and registry credentials, signed **webhooks**, and **notifications**
+- **[Examples](https://github.com/miabi-io/examples)** — complete CI/CD and GitOps for Node.js, Go, Python, PHP, Laravel, Java and Spring Boot apps: tests, Dockerfiles, pipelines, and manifests that deploy as-is
 - REST + OpenAPI everywhere, plus a **CLI** and an official [Terraform / OpenTofu provider](https://github.com/miabi-io/terraform-provider-miabi)
 
 ### Identity, teams & access
@@ -354,6 +355,7 @@ Miabi is part of a family of self-hosting tools by the same author:
 | [agent](https://github.com/miabi-io/agent) | Outbound node agent for multi-node |
 | [runner](https://github.com/miabi-io/runner) | Dedicated build and pipeline runner |
 | [marketplace](https://github.com/miabi-io/marketplace) | Official app template catalog |
+| [examples](https://github.com/miabi-io/examples) | Example apps with complete CI/CD pipelines and GitOps manifests |
 | [Posta](https://github.com/goposta/posta) | Self-hosted email delivery and inbound |
 | [pg-bkup](https://github.com/jkaninda/pg-bkup) / [mysql-bkup](https://github.com/jkaninda/mysql-bkup) | Database backup tools |
 
