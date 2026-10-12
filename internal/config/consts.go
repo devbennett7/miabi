@@ -28,7 +28,7 @@ const (
 
 	// DefaultGomaVersion is the gateway version this build provisions and is
 	// tested against. Keep it in step with GOMA_VERSION in the release workflow.
-	DefaultGomaVersion = "1.0.0"
+	DefaultGomaVersion = "1.1.0"
 
 	marketplaceURL = OfficialMarketplaceURL
 	miabiLogDir    = "/var/lib/miabi/logs"
