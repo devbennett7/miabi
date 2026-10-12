@@ -502,6 +502,14 @@ const usage = computed(() => {
   return null
 })
 
+const storage = computed(() => {
+  const total = node.value?.storage_bytes ?? 0
+  if (total <= 0) return null
+  const free = Math.min(total, node.value?.storage_free_bytes ?? 0)
+  const used = total - free
+  return { total, free, used, percent: (used / total) * 100 }
+})
+
 // Helpers
 function cname(c: Container) { return ((c.names && c.names[0]) || c.id).replace(/^\//, '') }
 // Platform labels — mirror of internal/docker/labels.go. The prefix is `io.miabi.`
@@ -1013,6 +1021,10 @@ const gwBadge = computed(() => {
             <span class="hero-stat-value">{{ stats ? fmtBytes(stats.mem_total) : '—' }}</span>
           </div>
           <div class="hero-stat">
+            <span class="hero-stat-label">Storage</span>
+            <span class="hero-stat-value">{{ storage ? fmtBytes(storage.total) : '—' }}</span>
+          </div>
+          <div class="hero-stat">
             <span class="hero-stat-label">Platform</span>
             <span class="hero-stat-value">{{ stats ? stats.os + '/' + stats.arch : '—' }}</span>
           </div>
@@ -1081,6 +1093,14 @@ const gwBadge = computed(() => {
                 </div>
                 <div class="usage-bar"><div class="usage-fill" :style="{ width: (usage?.memPercent ?? 0) + '%' }"></div></div>
                 <div class="stat-sub">{{ usage ? usage.memSub : 'No data yet' }}</div>
+              </div>
+              <div class="usage-metric">
+                <div class="usage-metric-head">
+                  <span class="usage-metric-label"><span class="mdi mdi-harddisk"></span> Storage</span>
+                  <span class="usage-metric-value">{{ storage ? fmtSize(storage.used) + ' / ' + fmtSize(storage.total) : '—' }}</span>
+                </div>
+                <div class="usage-bar"><div class="usage-fill" :class="{ 'usage-fill-warn': storage && storage.percent >= 85 }" :style="{ width: (storage?.percent ?? 0) + '%' }"></div></div>
+                <div class="stat-sub">{{ storage ? fmtSize(storage.free) + ' free on the Docker data root disk' : 'Not measured yet' }}</div>
               </div>
             </div>
           </div>
@@ -1935,10 +1955,11 @@ const gwBadge = computed(() => {
 .stat-total { font-size: 16px; font-weight: 600; color: var(--text-muted); }
 .usage-bar { height: 6px; border-radius: 9999px; background: var(--bg-tertiary); overflow: hidden; margin: 10px 0 6px; }
 .usage-fill { height: 100%; border-radius: 9999px; background: var(--success-500); transition: width 0.4s ease; }
+.usage-fill-warn { background: var(--warning-500); }
 
 /* Node resource-usage card */
 .usage-card { margin-bottom: 24px; }
-.usage-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
+.usage-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
 .usage-metric-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .usage-metric-label { color: var(--text-muted); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
 .usage-metric-value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
