@@ -97,9 +97,8 @@ release:
 
     ## Docker images
 
-    Container images for this release are published to Docker Hub (`miabi/miabi`)
-    and GHCR (`ghcr.io/miabi-io/miabi`), tagged `latest`, `{{ .Tag }}`, and the
-    `-rootless` variants of each.
+    Container images for this release are published to Docker Hub (`miabi/miabi`),
+    tagged `latest`, `{{ .Tag }}`, and the `-rootless` variants of each.
 
     The web UI is embedded in the binary — each archive is a single self-contained
     executable that serves both the API and the UI. No extra files to deploy.
