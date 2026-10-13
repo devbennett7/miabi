@@ -308,6 +308,12 @@ func (s *Service) Revoke(ctx context.Context, token string) {
 	}
 }
 
+// ClearLockout drops a user's console-unlock lockout and failure count, for host-side recovery.
+func ClearLockout(ctx context.Context, rdb *redis.Client, userID uint) error {
+	id := strconv.FormatUint(uint64(userID), 10)
+	return rdb.Del(ctx, lockPrefix+id, failPrefix+id).Err()
+}
+
 // LockedUntil reports when a user's unlock lockout ends; zero when not locked.
 func (s *Service) LockedUntil(ctx context.Context, userID uint) time.Time {
 	t := s.lockedUntil(ctx, userID)
