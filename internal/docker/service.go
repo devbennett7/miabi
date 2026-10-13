@@ -430,7 +430,7 @@ func (e *engineClient) ServiceInspect(ctx context.Context, idOrName string) (Ser
 
 // ServiceList returns the swarm's services (identity + desired replicas).
 func (e *engineClient) ServiceList(ctx context.Context) ([]ServiceStatus, error) {
-	res, err := e.cli.ServiceList(ctx, client.ServiceListOptions{})
+	res, err := e.cli.ServiceList(ctx, client.ServiceListOptions{Status: true})
 	if err != nil {
 		return nil, err
 	}
@@ -439,6 +439,11 @@ func (e *engineClient) ServiceList(ctx context.Context) ([]ServiceStatus, error)
 		st := ServiceStatus{ID: s.ID, Name: s.Spec.Name}
 		if s.Spec.Mode.Replicated != nil && s.Spec.Mode.Replicated.Replicas != nil {
 			st.Replicas = *s.Spec.Mode.Replicated.Replicas
+		}
+		if s.ServiceStatus != nil {
+			st.RunningTasks = s.ServiceStatus.RunningTasks
+			// Desired comes from the scheduler too, so a global service (no replica count) has one.
+			st.Replicas = s.ServiceStatus.DesiredTasks
 		}
 		out = append(out, st)
 	}

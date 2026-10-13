@@ -1401,6 +1401,9 @@ export interface Application {
   // Real per-node replica placement for a cluster ("service") app, populated on
   // the app-detail read: where Swarm actually scheduled the running tasks.
   nodes?: NodePlacement[]
+  // A service app's task counts as Swarm reports them; absent when the swarm could not be asked.
+  running_replicas?: number
+  desired_replicas?: number
   display_name: string
   name: string
   alias?: string

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { serviceReplicas } from '@/utils/replicas'
 import { canReachDatabase } from '@/utils/dbReach'
 import { useI18n } from 'vue-i18n'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
@@ -2097,7 +2098,12 @@ async function detachDatabase(d: AppDatabase) {
         <div class="flex items-center gap-3" style="margin-top: 8px">
           <ResourceIcon :src="app.icon" mdi="mdi-cube-outline" :name="app.name" :size="44" />
           <div>
-            <h1>{{ app.display_name || app.name }}</h1>
+            <div class="flex items-center gap-2">
+              <h1>{{ app.display_name || app.name }}</h1>
+              <span v-if="serviceReplicas(app)" class="badge" :class="serviceReplicas(app)!.degraded ? 'badge-warning' : 'badge-neutral'" :title="$t('runtime.serviceTitle')">
+                <span class="mdi mdi-layers-triple-outline"></span> {{ $t('runtime.service') }} · {{ serviceReplicas(app)!.running ?? '' }}{{ serviceReplicas(app)!.running !== null ? '/' : '' }}{{ serviceReplicas(app)!.desired }}
+              </span>
+            </div>
             <div class="text-muted text-sm">
               <span class="mdi" :class="app.source_type === 'git' ? 'mdi-git' : 'mdi-docker'"></span>
               {{ app.image || app.git_repo }}

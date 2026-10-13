@@ -10,12 +10,17 @@ interface DatabaseNetworkInfo extends Placed {
   network_name?: string
 }
 
+/** Whether a Docker network name is a workspace overlay, reachable from every node of its cluster. */
+export function isOverlayNetwork(name?: string): boolean {
+  return (name ?? '').endsWith(OVERLAY_SUFFIX)
+}
+
 /**
  * Whether an app can reach a database instance by name. On a workspace overlay the database is
  * reachable from every node of its cluster; on a node-local bridge, only from its own node.
  */
 export function canReachDatabase(app: Placed, inst: DatabaseNetworkInfo): boolean {
-  if ((inst.network_name ?? '').endsWith(OVERLAY_SUFFIX)) {
+  if (isOverlayNetwork(inst.network_name)) {
     return (app.cluster_id ?? 0) === (inst.cluster_id ?? 0)
   }
   return (app.server_id ?? 0) === (inst.server_id ?? 0)

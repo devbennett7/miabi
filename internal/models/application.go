@@ -367,6 +367,10 @@ type Application struct {
 	// populated only on the app-detail read, and only in cluster mode. Empty for container apps,
 	// whose single node is ServerName.
 	Nodes []NodePlacement `json:"nodes,omitempty" gorm:"-"`
+	// RunningReplicas and DesiredReplicas are a cluster app's task counts as Swarm reports them.
+	// Transient, and nil when the swarm could not be asked, so the UI can tell unknown from zero.
+	RunningReplicas *uint64 `json:"running_replicas,omitempty" gorm:"-"`
+	DesiredReplicas *uint64 `json:"desired_replicas,omitempty" gorm:"-"`
 
 	// Cluster runtime. "container" (default) is a single container on plain Docker; "service"
 	// runs a replicated Swarm service on the workspace overlay when cluster mode is enabled.

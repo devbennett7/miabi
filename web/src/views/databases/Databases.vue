@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isOverlayNetwork } from '@/utils/dbReach'
 import { useI18n } from 'vue-i18n'
 import LocationPicker from '@/components/LocationPicker.vue'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
@@ -244,6 +245,9 @@ function fmtBytes(n?: number): string {
               <td class="cell-sub">
                 <span v-if="d.server_name"><span class="mdi mdi-server-network"></span> {{ d.server_name }}</span>
                 <span v-else>—</span>
+                <span v-if="isOverlayNetwork(d.network_name)" class="badge badge-neutral" style="margin-left: 6px" :title="$t('runtime.clusterNetworkTitle')">
+                  <span class="mdi mdi-lan"></span> {{ $t('runtime.clusterNetwork') }}
+                </span>
               </td>
               <td class="cell-sub">{{ fmtBytes(d.size_bytes) }}</td>
               <td><span class="badge badge-dot" :class="badge(d.status)">{{ d.status }}</span></td>
