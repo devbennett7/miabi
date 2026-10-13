@@ -21,8 +21,10 @@ package oauth
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/models"
@@ -31,41 +33,66 @@ import (
 	"gorm.io/gorm"
 )
 
-// idpFor stands in for the provider's token and userinfo endpoints, asserting the given identity.
-func idpFor(t *testing.T, email string) *httptest.Server {
+// stubIdP stands in for the provider's token and userinfo endpoints. Its asserted claims can be
+// changed between sign-ins.
+type stubIdP struct {
+	*httptest.Server
+	mu     sync.Mutex
+	claims map[string]any
+}
+
+func (s *stubIdP) assert(claims map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.claims = claims
+}
+
+// verifiedClaims is a provider asserting a verified email under a stable subject.
+func verifiedClaims(sub, email string) map[string]any {
+	return map[string]any{"sub": sub, "email": email, "email_verified": true, "name": "Someone", "preferred_username": "someone"}
+}
+
+func idpFor(t *testing.T, email string) *stubIdP {
 	t.Helper()
+	idp := &stubIdP{claims: verifiedClaims("sub-"+email, email)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/token", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"access_token":"t","token_type":"Bearer"}`))
 	})
 	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, _ *http.Request) {
+		idp.mu.Lock()
+		defer idp.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"email":"` + email + `","name":"Someone","preferred_username":"someone"}`))
+		_ = json.NewEncoder(w).Encode(idp.claims)
 	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv
+	idp.Server = httptest.NewServer(mux)
+	t.Cleanup(idp.Close)
+	return idp
 }
 
-func registerService(t *testing.T, email string) (*Service, *gorm.DB, *httptest.Server) {
+func registerService(t *testing.T, email string) (*Service, *gorm.DB, *stubIdP) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&models.User{}); err != nil {
+	if err := db.AutoMigrate(&models.User{}, &models.UserIdentity{}); err != nil {
 		t.Fatal(err)
 	}
 	idp := idpFor(t, email)
-	return &Service{users: repositories.NewUserRepository(db), http: idp.Client()}, db, idp
+	return &Service{
+		users:      repositories.NewUserRepository(db),
+		identities: repositories.NewUserIdentityRepository(db),
+		http:       idp.Client(),
+	}, db, idp
 }
 
 // providerFor builds an enabled auto-registering provider pointed at the stub identity provider.
 // The client secret is stored in the clear, which crypto.Decrypt passes through without a key.
-func providerFor(idp *httptest.Server, org *uint) *models.OAuthProvider {
+func providerFor(idp *stubIdP, org *uint) *models.OAuthProvider {
 	return &models.OAuthProvider{
-		Name: "acme-sso", Type: models.OAuthProviderOIDC,
+		ID: 1, Name: "acme-sso", Type: models.OAuthProviderOIDC,
 		ClientID: "id", ClientSecretEnc: "secret",
 		TokenURL: idp.URL + "/token", UserInfoURL: idp.URL + "/userinfo",
 		Enabled: true, AutoRegister: true,

@@ -2026,7 +2026,9 @@
       "noEmail": "The provider did not share an email address.",
       "providerUnavailable": "That sign-in provider is unavailable.",
       "registrationClosed": "This account does not exist and sign-up is disabled.",
-      "tokenError": "Could not start your session. Please try again."
+      "tokenError": "Could not start your session. Please try again.",
+      "emailNotVerified": "Your identity provider has not verified this email address, so it cannot be linked to an existing account.",
+      "identityConflict": "This account is already linked to a different identity at this provider."
     },
     "orContinueWith": "or continue with",
     "password": "Password",

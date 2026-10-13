@@ -20,6 +20,7 @@
 package handlers
 
 import (
+	"crypto/subtle"
 	"errors"
 	"net/http"
 	"net/url"
@@ -157,10 +158,11 @@ func (h *OAuthHandler) Authorize(c *okapi.Context) error {
 		}
 	}
 	redirectURI := h.callbackURI(c, p.Name)
-	authURL, err := h.oauth.AuthCodeURLWithIntent(c.Request().Context(), p, redirectURI, intent)
+	authURL, state, err := h.oauth.AuthCodeURLWithIntent(c.Request().Context(), p, redirectURI, intent)
 	if err != nil {
 		return c.AbortInternalServerError("failed to start oauth flow", err)
 	}
+	setFlowCookie(c, oauthStateCookie, state, oauth.StateTTL, http.SameSiteLaxMode)
 	c.Redirect(http.StatusFound, authURL)
 	return nil
 }
@@ -177,6 +179,11 @@ func (h *OAuthHandler) Callback(c *okapi.Context) error {
 	if code == "" || state == "" {
 		return h.fail(c, "missing_code")
 	}
+	browserState := cookieValue(c, oauthStateCookie)
+	setFlowCookie(c, oauthStateCookie, "", 0, http.SameSiteLaxMode)
+	if subtle.ConstantTimeCompare([]byte(browserState), []byte(state)) != 1 {
+		return h.fail(c, "invalid_state")
+	}
 	boundSlug, err := h.oauth.ConsumeState(c.Request().Context(), state)
 	if err != nil || boundSlug != slug {
 		return h.fail(c, "invalid_state")
@@ -191,11 +198,73 @@ func (h *OAuthHandler) Callback(c *okapi.Context) error {
 		return h.fail(c, oauthErrorCode(err))
 	}
 
-	// CLI login intents: the fresh SSO login just proved identity, so mint a
-	// short-lived token instead of a console session. login_token hands off to the
-	// display page; cli_login redirects straight to the CLI's loopback callback.
-	if raw := h.oauth.ConsumeIntent(c.Request().Context(), state); h.loginTokens != nil && raw != "" {
-		if kind, redirect, cliState, scopes, ok := parseIntent(raw); ok {
+	intent := h.oauth.ConsumeIntent(c.Request().Context(), state)
+	// The identity provider's login is one factor; an account with 2FA still owes its own.
+	if user.TwoFactorEnabled {
+		id, err := h.oauth.BeginTwoFactor(c.Request().Context(), oauth.TwoFactorChallenge{UserID: user.ID, Provider: slug, Intent: intent})
+		if err != nil {
+			return h.fail(c, "token_error")
+		}
+		setFlowCookie(c, oauthTwoFactorCookie, id, oauth.StateTTL, http.SameSiteStrictMode)
+		c.Redirect(http.StatusFound, strings.TrimRight(h.cfg.AppWebURL, "/")+"/login?sso_two_factor=1")
+		return nil
+	}
+
+	target, code := h.complete(c, user, slug, intent)
+	if code != "" {
+		return h.fail(c, code)
+	}
+	c.Redirect(http.StatusFound, target)
+	return nil
+}
+
+// OAuthTwoFactorRequest carries the second factor for a parked SSO sign-in.
+type OAuthTwoFactorRequest struct {
+	Body struct {
+		Code string `json:"code" required:"true"`
+	} `json:"body"`
+}
+
+// OAuthTwoFactorResponse is where the browser goes once the sign-in completes.
+type OAuthTwoFactorResponse struct {
+	Redirect string `json:"redirect"`
+}
+
+// CompleteTwoFactor verifies the TOTP or recovery code of an SSO sign-in parked by Callback and
+// finishes it.
+func (h *OAuthHandler) CompleteTwoFactor(c *okapi.Context, req *OAuthTwoFactorRequest) error {
+	ctx := c.Request().Context()
+	id := cookieValue(c, oauthTwoFactorCookie)
+	ch, err := h.oauth.PendingTwoFactor(ctx, id)
+	if err != nil {
+		return c.AbortUnauthorized("sign-in expired, start again")
+	}
+	user, err := h.oauth.User(ch.UserID)
+	if err != nil {
+		return c.AbortUnauthorized("sign-in expired, start again")
+	}
+	if !h.auth.VerifyLoginCode(user, strings.TrimSpace(req.Body.Code)) {
+		h.oauth.FailTwoFactor(ctx, id)
+		return c.AbortUnauthorized("invalid two-factor code")
+	}
+	if !h.oauth.EndTwoFactor(ctx, id) {
+		return c.AbortUnauthorized("sign-in expired, start again")
+	}
+	setFlowCookie(c, oauthTwoFactorCookie, "", 0, http.SameSiteStrictMode)
+
+	target, code := h.complete(c, user, ch.Provider, ch.Intent)
+	if code != "" {
+		return c.AbortUnauthorized("sign-in failed: " + code)
+	}
+	return ok(c, OAuthTwoFactorResponse{Redirect: target})
+}
+
+// complete finishes an authenticated SSO sign-in and returns where to send the browser, or an error
+// code for the login page. CLI login intents mint a short-lived token instead of a console session:
+// login_token hands off to the display page; cli_login goes straight to the CLI's loopback callback.
+func (h *OAuthHandler) complete(c *okapi.Context, user *models.User, slug, intent string) (string, string) {
+	if h.loginTokens != nil && intent != "" {
+		if kind, redirect, cliState, scopes, ok := parseIntent(intent); ok {
 			switch kind {
 			case intentLoginToken:
 				return h.issueLoginToken(c, user, slug, scopes)
@@ -207,7 +276,7 @@ func (h *OAuthHandler) Callback(c *okapi.Context) error {
 
 	token, jti, err := h.auth.IssueToken(user)
 	if err != nil {
-		return h.fail(c, "token_error")
+		return "", "token_error"
 	}
 	ua := c.Header("User-Agent")
 	if len(ua) > 512 {
@@ -226,20 +295,19 @@ func (h *OAuthHandler) Callback(c *okapi.Context) error {
 	// Set the session as an HttpOnly cookie and redirect to a clean URL — the
 	// token is never exposed in the address bar / browser history.
 	setSessionCookie(c, token)
-	c.Redirect(http.StatusFound, h.successURL())
-	return nil
+	return h.successURL(), ""
 }
 
 // issueLoginToken mints a CLI login token for a user who just re-authenticated via SSO, stashes
-// it under a single-use hand-off reference, and redirects to the display page with that reference
-func (h *OAuthHandler) issueLoginToken(c *okapi.Context, user *models.User, slug string, scopes []string) error {
+// it under a single-use hand-off reference, and returns the display page with that reference
+func (h *OAuthHandler) issueLoginToken(c *okapi.Context, user *models.User, slug string, scopes []string) (string, string) {
 	tok, err := h.loginTokens.Issue(user.ID, scopes, nil)
 	if err != nil {
-		return h.fail(c, "token_error")
+		return "", "token_error"
 	}
 	ref, err := h.loginTokens.Stash(c.Request().Context(), tok)
 	if err != nil {
-		return h.fail(c, "token_error")
+		return "", "token_error"
 	}
 	h.oauth.TouchLastLogin(user)
 	h.audit.Record(audit.Entry{
@@ -247,29 +315,27 @@ func (h *OAuthHandler) issueLoginToken(c *okapi.Context, user *models.User, slug
 		IP: c.RealIP(), Metadata: map[string]any{"provider": slug, "via": "oauth"},
 	})
 	base := strings.TrimRight(h.cfg.AppWebURL, "/")
-	c.Redirect(http.StatusFound, base+"/request-token?handoff="+url.QueryEscape(ref))
-	return nil
+	return base + "/request-token?handoff=" + url.QueryEscape(ref), ""
 }
 
 // issueCliLoginToken is the SSO half of `miabi login`'s loopback flow: after a fresh IdP login it
-// mints a CLI token, stashes it behind a single-use code, and redirects the browser to the CLI's
-// local callback with that code. redirect was validated as loopback when the flow started.
-func (h *OAuthHandler) issueCliLoginToken(c *okapi.Context, user *models.User, slug, redirect, cliState string, scopes []string) error {
+// mints a CLI token, stashes it behind a single-use code, and returns the CLI's local callback with
+// that code. redirect was validated as loopback when the flow started.
+func (h *OAuthHandler) issueCliLoginToken(c *okapi.Context, user *models.User, slug, redirect, cliState string, scopes []string) (string, string) {
 	tok, err := h.loginTokens.Issue(user.ID, scopes, nil)
 	if err != nil {
-		return h.fail(c, "token_error")
+		return "", "token_error"
 	}
 	ref, err := h.loginTokens.Stash(c.Request().Context(), tok)
 	if err != nil {
-		return h.fail(c, "token_error")
+		return "", "token_error"
 	}
 	h.oauth.TouchLastLogin(user)
 	h.audit.Record(audit.Entry{
 		ActorID: &user.ID, Action: "user.login_token_issued", TargetType: "user",
 		IP: c.RealIP(), Metadata: map[string]any{"provider": slug, "via": "oauth_cli"},
 	})
-	c.Redirect(http.StatusFound, buildCliRedirect(redirect, ref, cliState))
-	return nil
+	return buildCliRedirect(redirect, ref, cliState), ""
 }
 
 // parseIntent splits a stored intent value into its kind and (for CLI-login) the loopback
@@ -354,6 +420,10 @@ func oauthErrorCode(err error) string {
 		return "account_disabled"
 	case errors.Is(err, oauth.ErrNoEmail):
 		return "no_email"
+	case errors.Is(err, oauth.ErrEmailNotVerified):
+		return "email_not_verified"
+	case errors.Is(err, oauth.ErrIdentityConflict):
+		return "identity_conflict"
 	default:
 		return "oauth_failed"
 	}

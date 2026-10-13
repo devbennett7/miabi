@@ -9,6 +9,8 @@ export const oauthApi = {
   providers: () => api.get<ApiResponse<ProvidersResponse>>('/auth/oauth/providers'),
   // Resolve the SSO provider for an email's domain (hidden-provider discovery).
   discoverSSO: (email: string) => api.post<ApiResponse<SSODiscovery>>('/auth/oauth/discover', { email }),
+  // Finish an SSO sign-in parked for the account's two-factor code; the server returns where to go next.
+  completeTwoFactor: (code: string) => api.post<ApiResponse<{ redirect: string }>>('/auth/oauth/2fa', { code }),
 }
 
 // authorizeUrl returns the absolute URL that begins the SSO redirect flow for a
