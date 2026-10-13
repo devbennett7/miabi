@@ -773,9 +773,7 @@ func (c *Config) validate() error {
 	if c.Env == "dev" {
 		return nil
 	}
-	// Non-dev: refuse to start with insecure defaults. Each of these is a real
-	// security boundary (session signing, secret encryption, the seeded admin,
-	// and CORS) that must not run on a shipped default.
+	// Non-dev: refuse to start with insecure defaults.
 	if c.JWTSecret == "" || c.JWTSecret == defaultJWTSecret {
 		return fmt.Errorf("MIABI_JWT_SECRET must be set to a non-default value in non-dev environments")
 	}
@@ -785,11 +783,23 @@ func (c *Config) validate() error {
 	if strings.TrimSpace(c.EncryptionKey) == "" {
 		return fmt.Errorf("MIABI_ENCRYPTION_KEY must be set in non-dev environments; without it, secrets are stored unencrypted at rest")
 	}
-	if c.AdminPassword == "" || c.AdminPassword == defaultAdminPassword {
-		return fmt.Errorf("MIABI_ADMIN_PASSWORD must be set to a non-default value in non-dev environments")
-	}
 	if hasWildcardOrigin(c.CORSOrigins) {
 		return fmt.Errorf(`MIABI_CORS_ORIGINS must be an explicit allowlist (not "*") in non-dev environments; a wildcard origin is unsafe with credentialed requests`)
+	}
+	return nil
+}
+
+// ValidateAdminSeed checks the credentials the first platform admin is seeded from. It runs only when
+// no admin exists yet, so an install past its first boot can drop them from its environment.
+func (c *Config) ValidateAdminSeed() error {
+	if email := strings.TrimSpace(c.AdminEmail); email == "" || !strings.Contains(email, "@") {
+		return fmt.Errorf("MIABI_ADMIN_EMAIL must be set to an email address to seed the platform admin")
+	}
+	if c.Env == "dev" {
+		return nil
+	}
+	if c.AdminPassword == "" || c.AdminPassword == defaultAdminPassword {
+		return fmt.Errorf("MIABI_ADMIN_PASSWORD must be set to a non-default value to seed the platform admin in non-dev environments")
 	}
 	return nil
 }

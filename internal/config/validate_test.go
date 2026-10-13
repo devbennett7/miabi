@@ -31,7 +31,6 @@ func prodConfig() *Config {
 		Env:           "production",
 		JWTSecret:     "0123456789abcdef0123456789abcdef",
 		EncryptionKey: "a-real-key",
-		AdminPassword: "a-real-password",
 		CORSOrigins:   "https://panel.example.com",
 	}
 }
@@ -47,7 +46,6 @@ func TestValidateAllowsInsecureDefaultsInDev(t *testing.T) {
 		Env:           "dev",
 		JWTSecret:     defaultJWTSecret,
 		EncryptionKey: "",
-		AdminPassword: defaultAdminPassword,
 		CORSOrigins:   "*",
 	}
 	if err := c.validate(); err != nil {
@@ -65,8 +63,6 @@ func TestValidateRejectsInsecureDefaultsInNonDev(t *testing.T) {
 		{"short jwt secret", func(c *Config) { c.JWTSecret = "a-real-but-short-secret" }},
 		{"empty encryption key", func(c *Config) { c.EncryptionKey = "" }},
 		{"whitespace encryption key", func(c *Config) { c.EncryptionKey = "   " }},
-		{"default admin password", func(c *Config) { c.AdminPassword = defaultAdminPassword }},
-		{"empty admin password", func(c *Config) { c.AdminPassword = "" }},
 		{"wildcard cors", func(c *Config) { c.CORSOrigins = "*" }},
 		{"wildcard cors in list", func(c *Config) { c.CORSOrigins = "https://ok.example.com, *" }},
 	}
@@ -142,6 +138,39 @@ func TestValidateRegistryStorageDriver(t *testing.T) {
 			}
 			if !tc.ok && err == nil {
 				t.Fatalf("MIABI_REGISTRY_STORAGE=%q accepted, want a boot refusal", tc.driver)
+			}
+		})
+	}
+}
+
+// The seeded admin's credentials are not a boot requirement: an install that already has an admin
+// starts without them.
+func TestValidateIgnoresAdminCredentials(t *testing.T) {
+	c := prodConfig()
+	c.AdminEmail, c.AdminPassword = "", ""
+	if err := c.validate(); err != nil {
+		t.Fatalf("validate() rejected a config without admin credentials: %v", err)
+	}
+}
+
+func TestValidateAdminSeed(t *testing.T) {
+	tests := []struct {
+		name, env, email, password string
+		ok                         bool
+	}{
+		{"real credentials", "production", "admin@acme.test", "a-real-password", true},
+		{"default password", "production", "admin@acme.test", defaultAdminPassword, false},
+		{"empty password", "production", "admin@acme.test", "", false},
+		{"empty email", "production", "", "a-real-password", false},
+		{"not an email", "production", "admin", "a-real-password", false},
+		{"default password in dev", "dev", "admin@acme.test", defaultAdminPassword, true},
+		{"empty email in dev", "dev", "", defaultAdminPassword, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Config{Env: tt.env, AdminEmail: tt.email, AdminPassword: tt.password}
+			if err := c.ValidateAdminSeed(); (err == nil) != tt.ok {
+				t.Fatalf("ValidateAdminSeed() = %v, want ok=%v", err, tt.ok)
 			}
 		})
 	}

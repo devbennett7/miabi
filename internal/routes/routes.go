@@ -21,6 +21,7 @@ package routes
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -480,7 +481,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	}
 	// Seed the platform admin on first boot and ensure it owns the Miabi System
 	// workspace. Idempotent; a no-op once any user exists.
-	if admin, err := dbstorage.SeedAdmin(db, cfg.AdminEmail, cfg.AdminPassword); err != nil {
+	if admin, err := dbstorage.SeedAdmin(db, cfg.AdminEmail, cfg.AdminPassword, cfg.ValidateAdminSeed); err != nil {
+		if errors.Is(err, dbstorage.ErrAdminSeedInvalid) {
+			logger.Fatal("refusing to start without a platform admin", "error", err)
+		}
 		logger.Error("failed to seed admin user", "error", err)
 	} else if admin != nil {
 		if _, err := workspaceService.EnsureSystem(admin.ID); err != nil {
