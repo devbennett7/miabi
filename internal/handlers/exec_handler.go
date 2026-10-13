@@ -40,11 +40,7 @@ func (h *ApplicationHandler) Processes(c *okapi.Context) error {
 	if err != nil {
 		return c.AbortNotFound("application not found")
 	}
-	psArgs := c.Query("args")
-	if psArgs == "" {
-		psArgs = "aux"
-	}
-	list, err := h.svc.Processes(c.Request().Context(), app, psArgs)
+	list, err := h.svc.Processes(c.Request().Context(), app)
 	if err != nil {
 		if errors.Is(err, application.ErrTaskOnUnmanagedNode) || errors.Is(err, application.ErrNoActiveContainer) {
 			return c.AbortWithError(http.StatusConflict, errors.New("the application has no running container"))
