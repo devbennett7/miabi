@@ -427,6 +427,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// a node-local bridge, and existing bridges are converted when the admin enables
 	// cluster networking. Off (the single-node default), everything stays a bridge.
 	networkService.SetCluster(clusterService)
+	clusterService.SetNodeJoinedHook(func(ctx context.Context, _ uint, nodeName string, dc docker.Client) {
+		networkService.PruneStaleBridges(ctx, dc, nodeName)
+	})
 	networkService.SetClients(nodeManager.Clients())
 	networkService.SetMigrationDeps(serverRepo, repositories.NewDatabaseRepository(db))
 	clusterService.SetNetworkMigrator(
@@ -851,7 +854,10 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	nodeStatsService.SetHostProc(cfg.HostProcPath)
 	metadataGuard := metadataguard.NewService(nodeClients, serverRepo, cfg.MetadataGuard)
 	metadataGuard.SetImageResolver(imageResolver)
-	nodeManager.SetOnConnect(metadataGuard.OnConnect)
+	nodeManager.SetOnConnect(func(ctx context.Context, srv *models.Server, token string, dc docker.Client) {
+		metadataGuard.OnConnect(ctx, srv, token, dc)
+		networkService.PruneStaleBridges(ctx, dc, srv.Name)
+	})
 	if cronManager != nil {
 		if err := cronManager.RegisterTask("metadata_guard", 0, "Keep containers off the cloud metadata service", "@every 30m", func() error {
 			return metadataGuard.Sweep(context.Background())
