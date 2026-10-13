@@ -4188,5 +4188,11 @@
     "olderKeys": "Older sealing keys",
     "created": "Created",
     "stillInUse": "Secrets still sealed to it"
+  },
+  "runtime": {
+    "service": "Service",
+    "serviceTitle": "Replicated Swarm service: running / desired replicas",
+    "clusterNetwork": "Cluster network",
+    "clusterNetworkTitle": "On a cluster network: apps on every node of the cluster can link to it"
   }
 }

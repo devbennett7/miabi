@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { canReachDatabase } from '@/utils/dbReach'
+import { canReachDatabase, isOverlayNetwork } from '@/utils/dbReach'
 import { useI18n } from 'vue-i18n'
 import { computed, ref, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -978,7 +978,12 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
         <div class="flex items-center gap-3" style="margin-top: 8px">
           <ResourceIcon :src="engineLogo(inst.engine)" :mdi="engineMdi(inst.engine)" :name="inst.name" :size="44" />
           <div>
-            <h1>{{ inst.display_name || inst.name }}</h1>
+            <div class="flex items-center gap-2">
+              <h1>{{ inst.display_name || inst.name }}</h1>
+              <span v-if="isOverlayNetwork(inst.network_name)" class="badge badge-neutral" :title="$t('runtime.clusterNetworkTitle')">
+                <span class="mdi mdi-lan"></span> {{ $t('runtime.clusterNetwork') }}
+              </span>
+            </div>
             <div class="text-muted text-sm">
               <span class="mdi mdi-docker"></span>
               {{ inst.engine }} {{ inst.version }}

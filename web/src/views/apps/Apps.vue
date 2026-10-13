@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { serviceReplicas } from '@/utils/replicas'
 import { useI18n } from 'vue-i18n'
 import { ref, computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -336,7 +337,10 @@ function formatCreated(ts?: string) {
               </td>
               <td class="cell-sub">{{ a.source_type === 'git' ? a.git_repo : `${a.image}:${a.tag || 'latest'}` }}</td>
               <td class="cell-sub">
-                <span v-if="a.server_name"><span class="mdi mdi-server-network"></span> {{ a.server_name }}</span>
+                <span v-if="serviceReplicas(a)" class="badge" :class="serviceReplicas(a)!.degraded ? 'badge-warning' : 'badge-neutral'" :title="$t('runtime.serviceTitle')">
+                  <span class="mdi mdi-layers-triple-outline"></span> {{ $t('runtime.service') }} · {{ serviceReplicas(a)!.running ?? '' }}{{ serviceReplicas(a)!.running !== null ? '/' : '' }}{{ serviceReplicas(a)!.desired }}
+                </span>
+                <span v-else-if="a.server_name"><span class="mdi mdi-server-network"></span> {{ a.server_name }}</span>
                 <span v-else>—</span>
               </td>
               <td><span class="badge badge-dot" :class="badge(a.status)">{{ a.status }}</span></td>

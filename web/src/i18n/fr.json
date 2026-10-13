@@ -4188,5 +4188,11 @@
     "olderKeys": "Anciennes clés de scellement",
     "created": "Créée",
     "stillInUse": "Secrets encore scellés avec elle"
+  },
+  "runtime": {
+    "service": "Service",
+    "serviceTitle": "Service Swarm répliqué : répliques en cours / souhaitées",
+    "clusterNetwork": "Réseau du cluster",
+    "clusterNetworkTitle": "Sur un réseau du cluster : les applications de tous les nœuds du cluster peuvent s’y lier"
   }
 }

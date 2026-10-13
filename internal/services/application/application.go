@@ -397,7 +397,12 @@ func (s *Service) annotatePlacement(ctx context.Context, app *models.Application
 		return
 	}
 	st, err := mgr.ServiceInspect(ctx, node.AppAlias(app))
-	if err != nil || len(st.Placement) == 0 {
+	if err != nil {
+		return
+	}
+	running, desired := st.RunningTasks, st.Replicas
+	app.RunningReplicas, app.DesiredReplicas = &running, &desired
+	if len(st.Placement) == 0 {
 		return
 	}
 	placements := make([]models.NodePlacement, 0, len(st.Placement))
@@ -1222,7 +1227,43 @@ func (s *Service) List(workspaceID uint) ([]models.Application, error) {
 	for i := range apps {
 		s.annotateServer(&apps[i])
 	}
+	s.annotateReplicas(apps)
 	return apps, nil
+}
+
+// listReplicasTimeout bounds the swarm query behind a list, so a slow manager costs the list its
+// replica counts rather than its response.
+const listReplicasTimeout = 3 * time.Second
+
+// annotateReplicas fills the running and desired task counts of the cluster apps in a list, with one
+// service listing per cluster rather than an inspect per app. Best-effort: counts stay unset when a
+// swarm cannot be reached.
+func (s *Service) annotateReplicas(apps []models.Application) {
+	ctx, cancel := context.WithTimeout(context.Background(), listReplicasTimeout)
+	defer cancel()
+	byCluster := map[uint]map[string]docker.ServiceStatus{}
+	for i := range apps {
+		app := &apps[i]
+		if app.RuntimeKind != models.RuntimeService || !s.isSwarm(app.ClusterID) {
+			continue
+		}
+		services, ok := byCluster[app.ClusterID]
+		if !ok {
+			services = map[string]docker.ServiceStatus{}
+			if mgr, err := s.swarmManager(ctx, app); err == nil {
+				if list, err := mgr.ServiceList(ctx); err == nil {
+					for _, st := range list {
+						services[st.Name] = st
+					}
+				}
+			}
+			byCluster[app.ClusterID] = services
+		}
+		if st, found := services[node.AppAlias(app)]; found {
+			running, desired := st.RunningTasks, st.Replicas
+			app.RunningReplicas, app.DesiredReplicas = &running, &desired
+		}
+	}
 }
 
 // AppsReferencingSecret returns the workspace's apps whose env references the
