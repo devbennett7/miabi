@@ -69,10 +69,16 @@ func SchemaVersion(db *gorm.DB) string {
 	return step.Version
 }
 
+// ErrAdminSeedInvalid wraps credentials that cannot seed the first platform admin. Boot must stop on
+// it: an install left without an admin would make whoever registers first the platform admin.
+var ErrAdminSeedInvalid = errors.New("cannot seed the platform admin")
+
 // SeedAdmin ensures a platform admin exists: returns the existing admin if one
 // is already present, otherwise creates one from the configured credentials.
 // Idempotent — safe to run on every boot. (Mirrors the Posta admin seeder.)
-func SeedAdmin(db *gorm.DB, email, password string) (*models.User, error) {
+//
+// validate checks the credentials and runs only when an admin is about to be created.
+func SeedAdmin(db *gorm.DB, email, password string, validate func() error) (*models.User, error) {
 	// Already bootstrapped: return the first admin (its workspace is then ensured).
 	var existing models.User
 	err := db.Where("role = ?", models.SystemRoleAdmin).Order("id ASC").First(&existing).Error
@@ -83,9 +89,14 @@ func SeedAdmin(db *gorm.DB, email, password string) (*models.User, error) {
 		return nil, err
 	}
 
+	if validate != nil {
+		if err := validate(); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrAdminSeedInvalid, err)
+		}
+	}
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" || password == "" {
-		return nil, fmt.Errorf("admin email and password are required to seed the first account")
+		return nil, fmt.Errorf("%w: admin email and password are required to seed the first account", ErrAdminSeedInvalid)
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
