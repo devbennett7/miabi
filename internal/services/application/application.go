@@ -1633,15 +1633,19 @@ func (s *Service) Exec(ctx context.Context, app *models.Application, opts docker
 	return dc.Exec(ctx, cid, opts)
 }
 
+// processListArgs is never taken from the caller: the host's ps runs as root, and a flag such as
+// `e` would print each process's environment, secrets included, to anyone who can view the app.
+const processListArgs = "aux"
+
 // Processes lists the running processes in the app's active container (the
 // "docker top" view). Read-only — no shell capability needed. Returns
 // ErrNoActiveContainer when nothing is running.
-func (s *Service) Processes(ctx context.Context, app *models.Application, psArgs string) (docker.ProcessList, error) {
+func (s *Service) Processes(ctx context.Context, app *models.Application) (docker.ProcessList, error) {
 	cid, dc, err := s.runtimeContainerID(ctx, app)
 	if err != nil {
 		return docker.ProcessList{}, ErrNoActiveContainer
 	}
-	return dc.Top(ctx, cid, psArgs)
+	return dc.Top(ctx, cid, processListArgs)
 }
 
 // activeContainerID returns the active release's container, or ErrNotDeployable

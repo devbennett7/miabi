@@ -312,8 +312,8 @@ export const appApi = {
     return api.get<ApiResponse<DeploymentLogHistory>>(`/workspaces/${ws}/apps/${id}/deployments/${deploymentId}/logs/history`)
   },
   // Running processes in the active container (docker top). Read-only; poll for live.
-  processes(ws: number, id: number, args = 'aux') {
-    return api.get<ApiResponse<ProcessList>>(`/workspaces/${ws}/apps/${id}/processes?args=${encodeURIComponent(args)}`)
+  processes(ws: number, id: number) {
+    return api.get<ApiResponse<ProcessList>>(`/workspaces/${ws}/apps/${id}/processes`)
   },
   releases(ws: number, id: number) {
     return api.get<ApiResponse<Release[]>>(`/workspaces/${ws}/apps/${id}/releases`)
