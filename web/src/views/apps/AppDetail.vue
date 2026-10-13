@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { canReachDatabase } from '@/utils/dbReach'
 import { useI18n } from 'vue-i18n'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -2019,8 +2020,8 @@ function resetEnvRows() {
   envRows.value = Object.fromEntries(linkFields.value.map((f) => [f, { name: '', on: true }]))
 }
 
-// Only instances on the app's node can be attached (no cross-node service DNS).
-const instancesOnNode = computed(() => dbInstances.value.filter((i) => (i.server_id ?? 0) === (app.value?.server_id ?? 0)))
+// Only instances the app can reach by name: its own node, or anywhere in its cluster on an overlay.
+const instancesOnNode = computed(() => dbInstances.value.filter((i) => !!app.value && canReachDatabase(app.value, i)))
 const hiddenInstanceCount = computed(() => dbInstances.value.length - instancesOnNode.value.length)
 // Logical DBs free to attach (not already owned by an app).
 const freeDatabases = computed(() => instDatabases.value.filter((d) => !d.application_id))
@@ -3814,7 +3815,7 @@ async function detachDatabase(d: AppDatabase) {
             </button>
           </div>
           <p v-if="hiddenInstanceCount > 0" class="form-hint" style="margin-top: 6px">
-            {{ hiddenInstanceCount }} instance(s) on other nodes are hidden — an app can only use databases on its own node.
+            {{ hiddenInstanceCount }} instance(s) are hidden — this app cannot reach them: they run on another node, outside cluster networking.
           </p>
 
           <!-- Step 2: database on the instance -->
