@@ -40,6 +40,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 // Config holds all runtime configuration, loaded from the environment.
@@ -598,7 +599,7 @@ func New() *Config {
 		Env:                   goutils.Env("MIABI_ENV", "production"),
 		Port:                  goutils.EnvInt("MIABI_PORT", 9000),
 		DevMode:               goutils.EnvBool("MIABI_DEV_MODE", false),
-		LogLevel:              goutils.Env("MIABI_LOG_LEVEL", ""),
+		LogLevel:              goutils.Env("MIABI_LOG_LEVEL", "info"),
 		JWTSecret:             goutils.Env("MIABI_JWT_SECRET", defaultJWTSecret),
 		EncryptionKey:         goutils.Env("MIABI_ENCRYPTION_KEY", ""),
 		AdminEmail:            goutils.Env("MIABI_ADMIN_EMAIL", "admin@example.com"),
@@ -896,6 +897,23 @@ func (c *Config) LogLevelFor() (logger.LogLevel, error) {
 	return "", fmt.Errorf("MIABI_LOG_LEVEL=%q is not a log level (use debug, info, warn or error)", c.LogLevel)
 }
 
+// DBLogLevel derives database query logging from MIABI_LOG_LEVEL: every query at debug, failed and
+// slow queries at info and warn, failed queries only at error.
+func (c *Config) DBLogLevel() gormlogger.LogLevel {
+	level, err := c.LogLevelFor()
+	if err != nil {
+		return gormlogger.Error
+	}
+	switch level {
+	case logger.LevelDebug:
+		return gormlogger.Info
+	case logger.LevelError:
+		return gormlogger.Error
+	default:
+		return gormlogger.Warn
+	}
+}
+
 // initLogger builds the logger AND installs it as the package default: logger.New
 // assigns the package-level logger, so every logger.Info/Warn/Error call in Miabi —
 // not just the one handed to Okapi — honours this level.
@@ -1033,7 +1051,7 @@ func (c *Config) InitStorage() {
 			c.Database.name, c.Database.port, c.Database.sslMode)
 	}
 
-	db, err := storage.ConnectPostgres(dsn)
+	db, err := storage.ConnectPostgres(dsn, c.DBLogLevel())
 	if err != nil {
 		logger.Fatal("failed to connect to database", "error", err)
 	}
