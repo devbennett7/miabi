@@ -138,6 +138,7 @@ type Service struct {
 	// ingressReconciler re-asserts the central gateway's attachment to the default cluster's ingress overlay,
 	// so a gateway recreate can't leave clustered apps dark for longer than a refresh interval.
 	ingressReconciler func(context.Context) error
+	nodeJoined        func(ctx context.Context, serverID uint, nodeName string, dc docker.Client)
 	gatewayListener   func(context.Context, uint)
 	externalListener  func(context.Context, uint)
 	// externalDomainEnv and externalProviderEnv pin the default cluster's external access from the environment.
@@ -185,6 +186,14 @@ func (s *Service) SetLeader(l Leader) { s.leader = l }
 // runs on Enable, `rollback` on Disable, and `pending` counts the networks still on bridges. Nil-safe.
 func (s *Service) SetNetworkMigrator(migrate, rollback func(context.Context) error, pending func() int) {
 	s.networkMigrator, s.networkRollback, s.networkPending = migrate, rollback, pending
+}
+
+// SetNodeJoinedHook wires a callback run after a node joins a cluster, with that node's Docker client.
+// Nil-safe; failures are the hook's own to report and never undo the join.
+func (s *Service) SetNodeJoinedHook(fn func(ctx context.Context, serverID uint, nodeName string, dc docker.Client)) {
+	s.mu.Lock()
+	s.nodeJoined = fn
+	s.mu.Unlock()
 }
 
 // SetIngressReconciler wires the callback that re-asserts the central gateway's attachment to the
@@ -899,6 +908,12 @@ func (s *Service) JoinNode(ctx context.Context, clusterID, serverID uint) error 
 		}
 	}
 	s.Refresh(ctx)
+	s.mu.Lock()
+	joined := s.nodeJoined
+	s.mu.Unlock()
+	if joined != nil {
+		joined(ctx, serverID, srv.Name, dc)
+	}
 	return nil
 }
 
