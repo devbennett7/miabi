@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useNotificationStore } from '@/stores/notification'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { copyText } from '@/utils/clipboard'
 import type { Runner, RunnerAdapter } from '@/api/runners'
 import AppModal from '@/components/AppModal.vue'
+import { useRunnerStatusStream } from '@/composables/useRunnerStatusStream'
 
 const props = defineProps<{
   adapter: RunnerAdapter
@@ -37,6 +38,11 @@ const loading = ref(false)
 const saving = ref(false)
 const showRegister = ref(false)
 const createdToken = ref<string | null>(null)
+// The runner the dialog shows an enrollment command for, so it can say when that runner dials in.
+const createdRunnerId = ref<number | null>(null)
+const createdRunnerOnline = computed(
+  () => !!createdRunnerId.value && !!runners.value.find((r) => r.id === createdRunnerId.value)?.connected,
+)
 
 // Register form.
 const name = ref('')
@@ -63,17 +69,41 @@ const runCommand = computed(
     `  ${image.value}`,
 )
 
-async function load() {
-  loading.value = true
+async function load(quiet = false) {
+  if (!quiet) loading.value = true
   try {
     runners.value = await props.adapter.list()
   } catch (e) {
-    notify.apiError(e)
+    if (!quiet) notify.apiError(e)
   } finally {
     loading.value = false
   }
 }
-onMounted(load)
+
+// A status for a runner the list does not hold yet (added from another session) pulls the list in,
+// debounced, rather than inventing a row from the event.
+let unknownRunnerTimer: ReturnType<typeof setTimeout> | null = null
+function applyStatus(r: Runner) {
+  const i = runners.value.findIndex((x) => x.id === r.id)
+  if (i >= 0) {
+    runners.value[i] = r
+    return
+  }
+  if (unknownRunnerTimer) clearTimeout(unknownRunnerTimer)
+  unknownRunnerTimer = setTimeout(() => load(true), 400)
+}
+
+const live = !!props.adapter.eventsUrl
+const { streaming, open: openStatusStream } = useRunnerStatusStream(
+  (list) => { runners.value = list; loading.value = false },
+  applyStatus,
+  () => load(true),
+)
+onMounted(() => {
+  load()
+  if (props.adapter.eventsUrl) openStatusStream(props.adapter.eventsUrl())
+})
+onUnmounted(() => { if (unknownRunnerTimer) clearTimeout(unknownRunnerTimer) })
 
 function openRegister() {
   name.value = ''
@@ -81,6 +111,7 @@ function openRegister() {
   labelsText.value = ''
   concurrency.value = 1
   createdToken.value = null
+  createdRunnerId.value = null
   showRegister.value = true
 }
 
@@ -98,6 +129,7 @@ async function register() {
       concurrency: concurrency.value,
     })
     createdToken.value = res.token
+    createdRunnerId.value = res.runner.id
     if (res.image) image.value = res.image
     notify.success(t('notify.runners.registered'))
     load()
@@ -128,6 +160,8 @@ async function confirmRegenerate() {
   regenerating.value = true
   try {
     createdToken.value = await props.adapter.regenerateToken(r.id)
+    // An enrolled runner keeps its tunnel across a new token, so there is nothing to wait for.
+    createdRunnerId.value = null
     name.value = r.name
     showRegister.value = true
     pendingRegenerate.value = null
@@ -182,14 +216,19 @@ function platform(r: Runner): string {
         <h1>{{ title }}</h1>
         <p class="subtitle">{{ subtitle }}</p>
       </div>
-      <button
-        v-if="canEdit"
-        class="btn btn-primary"
-        :disabled="atCreateLimit"
-        :title="atCreateLimit ? limitNote : ''"
-        @click="openRegister"
-      >
-        <span class="mdi mdi-plus"></span>{{ $t('runners.addRunner') }}</button>
+      <div class="header-actions">
+        <span v-if="live" class="live-chip" :class="{ 'live-chip--off': !streaming }" :title="streaming ? $t('runners.liveHint') : $t('runners.reconnectingHint')">
+          <span class="live-dot"></span> {{ streaming ? $t('runners.live') : $t('runners.reconnecting') }}
+        </span>
+        <button
+          v-if="canEdit"
+          class="btn btn-primary"
+          :disabled="atCreateLimit"
+          :title="atCreateLimit ? limitNote : ''"
+          @click="openRegister"
+        >
+          <span class="mdi mdi-plus"></span>{{ $t('runners.addRunner') }}</button>
+      </div>
     </div>
 
     <div v-if="canEdit && atCreateLimit && limitNote" class="app-banner app-banner--info" style="margin-bottom: 16px">
@@ -294,6 +333,11 @@ function platform(r: Runner): string {
               </div>
             </div>
             <div class="code-block" style="margin-top: 14px; white-space: pre">{{ runCommand }}</div>
+            <p v-if="live && createdRunnerId" class="join-wait" :class="{ 'join-wait--up': createdRunnerOnline }">
+              <span v-if="createdRunnerOnline" class="mdi mdi-check-circle"></span>
+              <span v-else class="spinner spinner-sm"></span>
+              {{ createdRunnerOnline ? $t('runners.connectedOnline') : $t('runners.waitingToConnect') }}
+            </p>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="copy(createdToken!)">{{ $t('runners.copyToken') }}</button>
@@ -332,4 +376,11 @@ function platform(r: Runner): string {
 .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
 a.cell-title.link { color: inherit; text-decoration: none; cursor: pointer; }
 a.cell-title.link:hover { color: var(--primary-500); text-decoration: underline; }
+.header-actions { display: flex; align-items: center; gap: 12px; }
+.live-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success, #22c55e); }
+.live-chip--off .live-dot { background: var(--text-muted); }
+.join-wait { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; font-size: 13px; color: var(--text-muted); }
+.join-wait--up { color: var(--success, #22c55e); }
+.spinner-sm { width: 14px; height: 14px; }
 </style>

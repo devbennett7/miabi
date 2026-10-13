@@ -27,6 +27,7 @@ import (
 	"github.com/miabi-io/miabi/internal/middlewares"
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/services/audit"
+	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/services/runner"
 )
 
@@ -43,6 +44,7 @@ type RunnerConnRegistry interface {
 type RunnerHandler struct {
 	svc   *runner.Service
 	conn  RunnerConnRegistry
+	bus   *eventbus.Bus
 	audit *audit.Logger
 }
 

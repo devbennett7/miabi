@@ -50,8 +50,9 @@ type connectionState interface {
 type Manager struct {
 	state connectionState
 
-	mu       sync.Mutex
-	sessions map[uint]*yamux.Session
+	mu          sync.Mutex
+	sessions    map[uint]*yamux.Session
+	statusHooks []func(id uint, online bool)
 }
 
 // NewManager creates a runner connection manager backed by the runner service
@@ -74,8 +75,15 @@ func (m *Manager) Handle(r *models.Runner, f models.RunnerFacts, ws *websocket.C
 		return
 	}
 
+	m.serve(r, f, sess)
+}
+
+// serve tracks one runner session from connect until its tunnel closes.
+func (m *Manager) serve(r *models.Runner, f models.RunnerFacts, sess *yamux.Session) {
+	id := r.ID
 	m.replace(id, sess)
 	m.state.MarkConnected(id, f)
+	m.notify(id, true)
 	logger.Info("runner connected", "runner", id, "name", r.Name, "version", f.Version, "ip", f.RemoteIP)
 
 	stop := make(chan struct{})
@@ -84,9 +92,31 @@ func (m *Manager) Handle(r *models.Runner, f models.RunnerFacts, ws *websocket.C
 	<-sess.CloseChan() // blocks until the tunnel dies (keepalive timeout or close)
 	close(stop)
 
-	m.state.MarkDisconnected(id)
-	m.forget(id, sess)
+	// A tunnel superseded by a reconnect closes after its replacement is live, and must not mark
+	// the runner offline under it.
+	if m.forget(id, sess) {
+		m.state.MarkDisconnected(id)
+		m.notify(id, false)
+	}
 	logger.Info("runner disconnected", "runner", id, "name", r.Name)
+}
+
+// AddStatusListener registers a hook fired when a runner's tunnel comes up or goes down, so the
+// console can show a newly enrolled runner without a reload. Hooks run in order on the tunnel's
+// goroutine, keeping a quick drop and reconnect in sequence, so they must not block.
+func (m *Manager) AddStatusListener(fn func(id uint, online bool)) {
+	m.mu.Lock()
+	m.statusHooks = append(m.statusHooks, fn)
+	m.mu.Unlock()
+}
+
+func (m *Manager) notify(id uint, online bool) {
+	m.mu.Lock()
+	hooks := append([]func(uint, bool){}, m.statusHooks...)
+	m.mu.Unlock()
+	for _, fn := range hooks {
+		fn(id, online)
+	}
 }
 
 // Connected reports whether a runner currently has a live tunnel.
@@ -141,10 +171,13 @@ func (m *Manager) replace(id uint, sess *yamux.Session) {
 	}
 }
 
-func (m *Manager) forget(id uint, sess *yamux.Session) {
+// forget drops sess and reports whether it was still the runner's live session.
+func (m *Manager) forget(id uint, sess *yamux.Session) bool {
 	m.mu.Lock()
-	if m.sessions[id] == sess {
-		delete(m.sessions, id)
+	defer m.mu.Unlock()
+	if m.sessions[id] != sess {
+		return false
 	}
-	m.mu.Unlock()
+	delete(m.sessions, id)
+	return true
 }

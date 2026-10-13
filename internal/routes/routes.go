@@ -1542,6 +1542,9 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Annotate runners' live-tunnel status from the runner connection manager.
 	r.h.runner.SetConnRegistry(runnerManager)
 	r.h.adminRunner.SetConnRegistry(runnerManager)
+	r.h.runner.SetEventBus(bus)
+	r.h.adminRunner.SetEventBus(bus)
+	runnerManager.AddStatusListener(r.h.runner.PublishStatus)
 
 	// Post-restore recovery. `miabi restore` writes a quiesce marker into the database it restores,
 	// so the control plane knows on its first boot that this is a recovery — and holds off on

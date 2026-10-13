@@ -30,6 +30,7 @@ const adapter: RunnerAdapter = {
   remove: async (id) => {
     await adminRunnerApi.remove(id)
   },
+  eventsUrl: () => adminRunnerApi.statusEventsUrl(),
 }
 </script>
 

@@ -178,6 +178,18 @@ func (s *Service) GetWorkspace(workspaceID, id uint) (*models.Runner, error) {
 	return m, nil
 }
 
+// Get fetches a runner of any scope, for callers that filter by owner themselves.
+func (s *Service) Get(id uint) (*models.Runner, error) {
+	m, err := s.repo.FindByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return m, nil
+}
+
 // GetShared fetches one platform-shared runner (admin).
 func (s *Service) GetShared(id uint) (*models.Runner, error) {
 	m, err := s.repo.FindShared(id)

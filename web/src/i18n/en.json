@@ -3411,7 +3411,13 @@
     "token": "Token",
     "tokenHint": "This is the only time it is shown. Run the runner on your build machine:",
     "version": "Version",
-    "features": "Features"
+    "features": "Features",
+    "live": "Live",
+    "reconnecting": "Reconnecting…",
+    "liveHint": "Status updates live",
+    "reconnectingHint": "Reconnecting — statuses may lag",
+    "waitingToConnect": "Waiting for the runner to connect…",
+    "connectedOnline": "Runner connected — it is online."
   },
   "saveAsSecret": {
     "optional": "(optional)",
