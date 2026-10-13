@@ -281,7 +281,8 @@ func (s *Service) ConsumeState(ctx context.Context, state string) (string, error
 // provisioning a new one when AutoRegister permits.
 //
 // A returning user is found by the provider's subject. An existing account is linked by email only
-// when the provider asserts that email is verified, since many IdPs let users set any address.
+// when the provider asserts that email is verified, since many IdPs let users set any address, or
+// when an admin set AllowUnverifiedEmail for a directory that never sends the claim.
 func (s *Service) Authenticate(ctx context.Context, p *models.OAuthProvider, code, redirectURI string) (*models.User, error) {
 	info, err := s.exchange(ctx, p, code, redirectURI)
 	if err != nil {
@@ -304,7 +305,7 @@ func (s *Service) Authenticate(ctx context.Context, p *models.OAuthProvider, cod
 	}
 	if user == nil {
 		if existing, err := s.users.FindByEmail(email); err == nil {
-			if !info.EmailVerified {
+			if !info.EmailVerified && !p.AllowUnverifiedEmail {
 				return nil, ErrEmailNotVerified
 			}
 			if err := s.link(p, info.Sub, existing.ID); err != nil {

@@ -53,6 +53,9 @@ type OAuthProvider struct {
 	Enabled      bool `json:"enabled" gorm:"default:true;not null"`
 	Hidden       bool `json:"hidden" gorm:"default:false;not null"`       // hide from login buttons
 	AutoRegister bool `json:"auto_register" gorm:"default:true;not null"` // auto-create users on first login
+	// AllowUnverifiedEmail links an existing account by an email the provider has not verified. Only for a
+	// directory that never sends email_verified: on a public provider anyone can claim any address.
+	AllowUnverifiedEmail bool `json:"allow_unverified_email" gorm:"default:false;not null"`
 
 	// AllowedDomains is a CSV of email domains permitted to sign in / register
 	// through this provider. Empty means any domain is allowed.

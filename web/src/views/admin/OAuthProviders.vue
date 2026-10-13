@@ -58,6 +58,7 @@ interface ProviderForm {
   enabled: boolean
   hidden: boolean
   auto_register: boolean
+  allow_unverified_email: boolean
   email_claim: string
   name_claim: string
   username_claim: string
@@ -86,6 +87,7 @@ function emptyForm(): ProviderForm {
     enabled: true,
     hidden: false,
     auto_register: true,
+    allow_unverified_email: false,
     email_claim: '',
     name_claim: '',
     username_claim: '',
@@ -123,6 +125,7 @@ function openEdit(p: OAuthProvider) {
     enabled: p.enabled,
     hidden: p.hidden,
     auto_register: p.auto_register,
+    allow_unverified_email: p.allow_unverified_email ?? false,
     email_claim: p.email_claim ?? '',
     name_claim: p.name_claim ?? '',
     username_claim: p.username_claim ?? '',
@@ -149,6 +152,7 @@ async function save() {
     enabled: f.enabled,
     hidden: f.hidden,
     auto_register: f.auto_register,
+    allow_unverified_email: f.allow_unverified_email,
   }
 
   const handle = f.slug.trim()
@@ -472,6 +476,13 @@ onMounted(() => {
               </label>
               <label class="check-row">
                 <input v-model="form.auto_register" type="checkbox" />Auto-register users</label>
+              <label class="check-row">
+                <input v-model="form.allow_unverified_email" type="checkbox" />Accept addresses the provider has not verified</label>
+              <p class="form-hint">
+                Leave this off for a public provider: an unverified address is a claim, and accepting one lets anybody
+                who types it at the provider take over the matching account. Turn it on for a directory that never sends
+                <code>email_verified</code>.
+              </p>
             </div>
           </div>
           <div class="modal-footer">

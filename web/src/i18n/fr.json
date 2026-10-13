@@ -2027,7 +2027,7 @@
       "providerUnavailable": "Ce fournisseur de connexion est indisponible.",
       "registrationClosed": "Ce compte n’existe pas et les inscriptions sont désactivées.",
       "tokenError": "Impossible de démarrer votre session. Veuillez réessayer.",
-      "emailNotVerified": "Votre fournisseur d’identité n’a pas vérifié cette adresse e-mail ; elle ne peut pas être liée à un compte existant.",
+      "emailNotVerified": "Votre fournisseur d’identité n’a pas vérifié cette adresse e-mail ; elle ne peut pas être liée à un compte existant. Un administrateur peut accepter les adresses non vérifiées dans les paramètres du fournisseur.",
       "identityConflict": "Ce compte est déjà lié à une autre identité chez ce fournisseur."
     },
     "orContinueWith": "ou continuer avec",

@@ -101,6 +101,7 @@ export interface OAuthProviderPayload {
   enabled?: boolean
   hidden?: boolean
   auto_register?: boolean
+  allow_unverified_email?: boolean
   allowed_domains?: string
   email_claim?: string
   name_claim?: string
