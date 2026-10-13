@@ -307,7 +307,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		settings.KeyInvitationSignupEnabled:  cfg.InvitationSignupEnabled,
 		settings.KeyControlManagerMode:       cfg.ControlManagerMode,
 	})
-	oauthService := oauth.NewService(oauthRepo, userRepo, redisClient)
+	oauthService := oauth.NewService(oauthRepo, userRepo, repositories.NewUserIdentityRepository(db), redisClient)
 	oauthService.SetWorkspaces(workspaceRepo) // auto-join SSO users to a provider's default workspace
 	orgRepo := repositories.NewOrganizationRepository(db)
 	clusterRepo := repositories.NewClusterRepository(db)

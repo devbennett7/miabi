@@ -42,8 +42,15 @@ func (r *OAuthProviderRepository) Update(p *models.OAuthProvider) error {
 	return r.db.Save(p).Error
 }
 
+// Delete removes a provider with the identities bound to it, so a provider created later under a
+// recycled id cannot inherit them.
 func (r *OAuthProviderRepository) Delete(id uint) error {
-	return r.db.Delete(&models.OAuthProvider{}, id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("provider_id = ?", id).Delete(&models.UserIdentity{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&models.OAuthProvider{}, id).Error
+	})
 }
 
 // Count returns the number of configured providers. Used by the single-provider

@@ -1094,5 +1094,15 @@ func (r *Router) oauthPublicRoutes() []okapi.RouteDefinition {
 			Handler: r.h.oauthPublic.Callback,
 			Summary: "OAuth callback",
 		},
+		{
+			Method:      http.MethodPost,
+			Path:        "/2fa",
+			Group:       g,
+			Middlewares: []okapi.Middleware{r.authRateLimit},
+			Handler:     okapi.H(r.h.oauthPublic.CompleteTwoFactor),
+			Summary:     "Complete an SSO sign-in with the account's two-factor code",
+			Request:     &handlers.OAuthTwoFactorRequest{},
+			Response:    &dto.Response[handlers.OAuthTwoFactorResponse]{},
+		},
 	}
 }

@@ -33,6 +33,9 @@ const loading = ref(false)
 // switches to collecting the authenticator (or recovery) code.
 const step = ref<'credentials' | 'twofactor'>('credentials')
 const twoFactorCode = ref('')
+// An SSO sign-in the callback parked for this account's second factor; the code goes to the SSO
+// endpoint instead of the password login.
+const ssoTwoFactor = ref(false)
 
 // Focus the relevant field on load and on step change — the `autofocus`
 // attribute only fires on the initial document render, not when the 2FA step is
@@ -84,6 +87,8 @@ const oauthErrors: Record<string, string> = {
   provider_unavailable: 'login.oauthError.providerUnavailable',
   missing_code: 'login.oauthError.cancelled',
   token_error: 'login.oauthError.tokenError',
+  email_not_verified: 'login.oauthError.emailNotVerified',
+  identity_conflict: 'login.oauthError.identityConflict',
 }
 
 onMounted(async () => {
@@ -91,6 +96,10 @@ onMounted(async () => {
 
   const code = route.query.error as string | undefined
   if (code) error.value = t(oauthErrors[code] ?? 'login.oauthError.generic')
+  if (route.query.sso_two_factor) {
+    ssoTwoFactor.value = true
+    step.value = 'twofactor'
+  }
 
   try {
     const { data } = await oauthApi.providers()
@@ -113,6 +122,7 @@ onMounted(async () => {
 })
 
 async function submit() {
+  if (ssoTwoFactor.value) return submitSSOTwoFactor()
   error.value = ''
   loading.value = true
   try {
@@ -136,10 +146,26 @@ async function submit() {
   }
 }
 
+async function submitSSOTwoFactor() {
+  error.value = ''
+  loading.value = true
+  try {
+    const { data } = await oauthApi.completeTwoFactor(twoFactorCode.value.trim())
+    window.location.assign(data.data.redirect)
+  } catch (e) {
+    error.value = apiErrorMessage(e, t('login.invalidCode'))
+    loading.value = false
+  }
+}
+
 function backToCredentials() {
   step.value = 'credentials'
   twoFactorCode.value = ''
   error.value = ''
+  if (ssoTwoFactor.value) {
+    ssoTwoFactor.value = false
+    router.replace({ query: {} })
+  }
 }
 
 function signInWith(slug: string) {

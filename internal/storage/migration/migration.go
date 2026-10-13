@@ -200,6 +200,7 @@ func Run(db *gorm.DB) error {
 		&models.MetricSample{},
 		&models.Setting{},
 		&models.OAuthProvider{},
+		&models.UserIdentity{},
 		&models.Webhook{},
 		&models.WebhookDelivery{},
 		&models.NotificationChannel{},

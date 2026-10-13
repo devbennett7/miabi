@@ -41,6 +41,7 @@ import (
 	"github.com/miabi-io/miabi/internal/storage/repositories"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 var (
@@ -52,11 +53,24 @@ var (
 	ErrAccountDisabled    = errors.New("account is disabled")
 	ErrNoEmail            = errors.New("provider did not return an email address")
 	ErrUnsupportedType    = errors.New("unsupported provider type")
+	ErrNoSubject          = errors.New("provider did not return a subject")
+	ErrEmailNotVerified   = errors.New("provider did not verify the email address")
+	ErrIdentityConflict   = errors.New("account is already linked to another identity at this provider")
+	ErrTwoFactorExpired   = errors.New("two-factor sign-in expired")
 )
 
 const statePrefix = "oauth:state:"
 const stateIntentPrefix = "oauth:intent:"
-const stateTTL = 10 * time.Minute
+
+// StateTTL is how long an authorization request stays valid.
+const StateTTL = 10 * time.Minute
+
+const twoFactorPrefix = "oauth:2fa:"
+const twoFactorAttemptsPrefix = "oauth:2fa:attempts:"
+const twoFactorTTL = 5 * time.Minute
+
+// twoFactorMaxAttempts bounds code guesses per SSO sign-in; the challenge is dropped after the last.
+const twoFactorMaxAttempts = 5
 
 // Google OAuth 2.0 / OIDC endpoints.
 const (
@@ -74,11 +88,14 @@ type UserInfo struct {
 	// Username is the handle the provider knows the user by. Empty when the
 	// provider sends none, in which case Miabi derives one from the email.
 	Username string `json:"preferred_username"`
+	// EmailVerified is the provider's email_verified claim; false when it sends none.
+	EmailVerified bool `json:"email_verified"`
 }
 
 type Service struct {
 	providers  *repositories.OAuthProviderRepository
 	users      *repositories.UserRepository
+	identities *repositories.UserIdentityRepository
 	workspaces *repositories.WorkspaceRepository
 	// membershipGate optionally reports whether a user may join one more workspace
 	// (the per-user membership limit). Nil-safe; when it returns an error the
@@ -88,12 +105,13 @@ type Service struct {
 	http           *http.Client
 }
 
-func NewService(providers *repositories.OAuthProviderRepository, users *repositories.UserRepository, redisClient *redis.Client) *Service {
+func NewService(providers *repositories.OAuthProviderRepository, users *repositories.UserRepository, identities *repositories.UserIdentityRepository, redisClient *redis.Client) *Service {
 	return &Service{
-		providers: providers,
-		users:     users,
-		redis:     redisClient,
-		http:      &http.Client{Timeout: 15 * time.Second},
+		providers:  providers,
+		users:      users,
+		identities: identities,
+		redis:      redisClient,
+		http:       &http.Client{Timeout: 15 * time.Second},
 	}
 }
 
@@ -195,25 +213,25 @@ func (s *Service) Get(name string) (*models.OAuthProvider, error) {
 }
 
 // AuthCodeURL stores a fresh state token (in Redis) and returns the provider's
-// authorization URL for the redirect.
-func (s *Service) AuthCodeURL(ctx context.Context, p *models.OAuthProvider, redirectURI string) (string, error) {
+// authorization URL for the redirect, with the state the caller binds to the browser.
+func (s *Service) AuthCodeURL(ctx context.Context, p *models.OAuthProvider, redirectURI string) (string, string, error) {
 	return s.AuthCodeURLWithIntent(ctx, p, redirectURI, "")
 }
 
 // AuthCodeURLWithIntent is AuthCodeURL with an application-level intent bound to the state, read back in the
 // callback via ConsumeIntent. A non-empty intent also sets prompt=login so the IdP forces a fresh
 // authentication — the re-auth property the CLI-token flow depends on, mirroring OpenShift's request-token.
-func (s *Service) AuthCodeURLWithIntent(ctx context.Context, p *models.OAuthProvider, redirectURI, intent string) (string, error) {
+func (s *Service) AuthCodeURLWithIntent(ctx context.Context, p *models.OAuthProvider, redirectURI, intent string) (string, string, error) {
 	state, err := randomState()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	if err := s.redis.Set(ctx, statePrefix+state, p.Name, stateTTL).Err(); err != nil {
-		return "", err
+	if err := s.redis.Set(ctx, statePrefix+state, p.Name, StateTTL).Err(); err != nil {
+		return "", "", err
 	}
 	if intent != "" {
-		if err := s.redis.Set(ctx, stateIntentPrefix+state, intent, stateTTL).Err(); err != nil {
-			return "", err
+		if err := s.redis.Set(ctx, stateIntentPrefix+state, intent, StateTTL).Err(); err != nil {
+			return "", "", err
 		}
 	}
 	q := url.Values{}
@@ -229,7 +247,7 @@ func (s *Service) AuthCodeURLWithIntent(ctx context.Context, p *models.OAuthProv
 	if strings.Contains(p.AuthURL, "?") {
 		sep = "&"
 	}
-	return p.AuthURL + sep + q.Encode(), nil
+	return p.AuthURL + sep + q.Encode(), state, nil
 }
 
 // ConsumeIntent reads and deletes the intent bound to a state (empty when none).
@@ -259,12 +277,18 @@ func (s *Service) ConsumeState(ctx context.Context, state string) (string, error
 	return slug, nil
 }
 
-// Authenticate exchanges an authorization code for user info and returns the
-// matching local user, provisioning a new one when AutoRegister permits.
+// Authenticate exchanges an authorization code for user info and returns the matching local user,
+// provisioning a new one when AutoRegister permits.
+//
+// A returning user is found by the provider's subject. An existing account is linked by email only
+// when the provider asserts that email is verified, since many IdPs let users set any address.
 func (s *Service) Authenticate(ctx context.Context, p *models.OAuthProvider, code, redirectURI string) (*models.User, error) {
 	info, err := s.exchange(ctx, p, code, redirectURI)
 	if err != nil {
 		return nil, err
+	}
+	if info.Sub == "" {
+		return nil, ErrNoSubject
 	}
 	email := strings.ToLower(strings.TrimSpace(info.Email))
 	if email == "" {
@@ -274,8 +298,22 @@ func (s *Service) Authenticate(ctx context.Context, p *models.OAuthProvider, cod
 		return nil, ErrDomainNotAllowed
 	}
 
-	user, err := s.users.FindByEmail(email)
-	if err == nil {
+	user, err := s.linkedUser(p, info.Sub)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		if existing, err := s.users.FindByEmail(email); err == nil {
+			if !info.EmailVerified {
+				return nil, ErrEmailNotVerified
+			}
+			if err := s.link(p, info.Sub, existing.ID); err != nil {
+				return nil, err
+			}
+			user = existing
+		}
+	}
+	if user != nil {
 		if !user.Active || user.IsService() {
 			return nil, ErrAccountDisabled
 		}
@@ -295,7 +333,11 @@ func (s *Service) Authenticate(ctx context.Context, p *models.OAuthProvider, cod
 	if count == 0 {
 		role = models.SystemRoleAdmin
 	}
-	now := time.Now()
+	var verifiedAt *time.Time
+	if info.EmailVerified {
+		now := time.Now()
+		verifiedAt = &now
+	}
 	newUser := &models.User{
 		Name:            name,
 		Email:           email,
@@ -303,7 +345,7 @@ func (s *Service) Authenticate(ctx context.Context, p *models.OAuthProvider, cod
 		PasswordHash:    unusablePassword(),
 		Role:            role,
 		Active:          true,
-		EmailVerifiedAt: &now, // provider asserts the email
+		EmailVerifiedAt: verifiedAt,
 		AuthSource:      models.AuthSourceOAuth,
 		// The realm the provider registers into; nil leaves the account in the default
 		// organization. Only set here, on an account being created: signing in through a provider
@@ -313,8 +355,114 @@ func (s *Service) Authenticate(ctx context.Context, p *models.OAuthProvider, cod
 	if err := s.users.Create(newUser); err != nil {
 		return nil, err
 	}
+	if err := s.link(p, info.Sub, newUser.ID); err != nil {
+		return nil, err
+	}
 	s.autoJoinWorkspace(p, newUser.ID)
 	return newUser, nil
+}
+
+// linkedUser returns the account a provider subject is bound to, or nil when it is bound to none.
+// A binding left behind by a deleted account is dropped.
+func (s *Service) linkedUser(p *models.OAuthProvider, subject string) (*models.User, error) {
+	identity, err := s.identities.FindBySubject(p.ID, subject)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	user, err := s.users.FindByID(identity.UserID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		_ = s.identities.Delete(identity.ID)
+		return nil, nil
+	}
+	return user, err
+}
+
+// link binds a provider subject to an account. An account holds one identity per provider, so a
+// second IdP account claiming the same email cannot take it over.
+func (s *Service) link(p *models.OAuthProvider, subject string, userID uint) error {
+	if _, err := s.identities.FindByUser(p.ID, userID); err == nil {
+		return ErrIdentityConflict
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return s.identities.Create(&models.UserIdentity{ProviderID: p.ID, Subject: subject, UserID: userID})
+}
+
+// TwoFactorChallenge is an SSO sign-in waiting for the account's second factor.
+type TwoFactorChallenge struct {
+	UserID   uint   `json:"user_id"`
+	Provider string `json:"provider"`
+	// Intent is the CLI login intent the sign-in was started with, empty for a console session.
+	Intent string `json:"intent,omitempty"`
+}
+
+// BeginTwoFactor parks an SSO sign-in until the user's second factor is verified and returns the
+// challenge id.
+func (s *Service) BeginTwoFactor(ctx context.Context, ch TwoFactorChallenge) (string, error) {
+	id, err := randomState()
+	if err != nil {
+		return "", err
+	}
+	raw, err := json.Marshal(ch)
+	if err != nil {
+		return "", err
+	}
+	if err := s.redis.Set(ctx, twoFactorPrefix+id, raw, twoFactorTTL).Err(); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// PendingTwoFactor returns a parked sign-in without consuming it.
+func (s *Service) PendingTwoFactor(ctx context.Context, id string) (*TwoFactorChallenge, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, ErrTwoFactorExpired
+	}
+	raw, err := s.redis.Get(ctx, twoFactorPrefix+id).Bytes()
+	if err != nil {
+		return nil, ErrTwoFactorExpired
+	}
+	var ch TwoFactorChallenge
+	if err := json.Unmarshal(raw, &ch); err != nil {
+		return nil, ErrTwoFactorExpired
+	}
+	return &ch, nil
+}
+
+// FailTwoFactor counts a wrong code and drops the challenge once the attempts run out.
+func (s *Service) FailTwoFactor(ctx context.Context, id string) {
+	key := twoFactorAttemptsPrefix + id
+	n, err := s.redis.Incr(ctx, key).Result()
+	if err != nil {
+		return
+	}
+	s.redis.Expire(ctx, key, twoFactorTTL)
+	if n >= twoFactorMaxAttempts {
+		s.redis.Del(ctx, twoFactorPrefix+id, key)
+	}
+}
+
+// EndTwoFactor consumes a challenge, reporting false when it was already used or expired so two
+// concurrent submissions cannot both complete the sign-in.
+func (s *Service) EndTwoFactor(ctx context.Context, id string) bool {
+	n, err := s.redis.Del(ctx, twoFactorPrefix+id).Result()
+	s.redis.Del(ctx, twoFactorAttemptsPrefix+id)
+	return err == nil && n == 1
+}
+
+// User returns an active, human account by id for completing a parked sign-in.
+func (s *Service) User(id uint) (*models.User, error) {
+	user, err := s.users.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if !user.Active || user.IsService() {
+		return nil, ErrAccountDisabled
+	}
+	return user, nil
 }
 
 // availableUsername turns the handle a provider asserted into one that can
@@ -451,6 +599,8 @@ func (s *Service) exchange(ctx context.Context, p *models.OAuthProvider, code, r
 		Email:    firstClaim(claims, p.EmailClaim, "email"),
 		Name:     firstClaim(claims, p.NameClaim, "name"),
 		Username: firstClaim(claims, p.UsernameClaim, "preferred_username"),
+		// Some providers send the claim as a string.
+		EmailVerified: claims["email_verified"] == true || stringClaim(claims, "email_verified") == "true",
 	}
 	return &info, nil
 }
