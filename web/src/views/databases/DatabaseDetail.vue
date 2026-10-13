@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { canReachDatabase } from '@/utils/dbReach'
 import { useI18n } from 'vue-i18n'
 import { computed, ref, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -79,10 +80,8 @@ const deleteBlockedReason = computed(() => {
   return ''
 })
 const appName = (id?: number | null) => apps.value.find((a) => a.id === id)?.name
-// Co-location: a database can only be attached to apps on its own node.
-const appsOnNode = computed(() =>
-  apps.value.filter((a) => (a.server_id ?? 0) === (inst.value?.server_id ?? 0)),
-)
+// Only apps that can reach the database by name: its own node, or anywhere in its cluster on an overlay.
+const appsOnNode = computed(() => apps.value.filter((a) => !!inst.value && canReachDatabase(a, inst.value)))
 const hiddenAppCount = computed(() => apps.value.length - appsOnNode.value.length)
 
 // --- Tabs (state mirrored in the URL query, like the app detail page) ---
@@ -1734,7 +1733,7 @@ onUnmounted(() => { stopStatusStream(); stopMetricsPoll(); if (backstop) clearIn
                 <option :value="null">{{ $t('db.donTAttach') }}</option>
                 <option v-for="a in appsOnNode" :key="a.id" :value="a.id">{{ a.name }}</option>
               </select>
-              <p class="form-hint">{{ $t('db.injectsDatabaseUrlDbEnv') }}<template v-if="hiddenAppCount > 0"> {{ hiddenAppCount }} app(s) on other nodes are hidden (must share the database's node).</template>
+              <p class="form-hint">{{ $t('db.injectsDatabaseUrlDbEnv') }}<template v-if="hiddenAppCount > 0"> {{ hiddenAppCount }} app(s) are hidden — they cannot reach this database: they run on another node, outside cluster networking.</template>
               </p>
             </div>
           </div>
