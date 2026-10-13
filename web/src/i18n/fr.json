@@ -3411,7 +3411,13 @@
     "token": "Jeton",
     "tokenHint": "C’est la seule fois où il est affiché. Exécutez le runner sur votre machine de build :",
     "version": "Version",
-    "features": "Fonctionnalités"
+    "features": "Fonctionnalités",
+    "live": "En direct",
+    "reconnecting": "Reconnexion…",
+    "liveHint": "Statuts mis à jour en direct",
+    "reconnectingHint": "Reconnexion — les statuts peuvent être en retard",
+    "waitingToConnect": "En attente de la connexion du runner…",
+    "connectedOnline": "Runner connecté — il est en ligne."
   },
   "saveAsSecret": {
     "optional": "(facultatif)",

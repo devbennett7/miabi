@@ -1,4 +1,4 @@
-import api from './client'
+import api, { sseUrl } from './client'
 import type { ApiResponse } from './types'
 
 // Runner is a dedicated build/pipeline machine (workspace-owned or, when
@@ -52,6 +52,8 @@ export interface RunnerAdapter {
   cordon: (id: number, cordoned: boolean) => Promise<Runner>
   regenerateToken: (id: number) => Promise<string>
   remove: (id: number) => Promise<void>
+  // eventsUrl, when set, is the SSE stream that keeps the list's status live.
+  eventsUrl?: () => string
 }
 
 const wsBase = (ws: number) => `/workspaces/${ws}/runners`
@@ -68,6 +70,7 @@ export const runnerApi = {
   regenerateToken: (ws: number, id: number) =>
     api.post<ApiResponse<{ token: string }>>(`${wsBase(ws)}/${id}/token`, {}),
   remove: (ws: number, id: number) => api.delete<ApiResponse<{ message: string }>>(`${wsBase(ws)}/${id}`),
+  statusEventsUrl: (ws: number) => sseUrl(`${wsBase(ws)}/events`),
 }
 
 const adminBase = '/admin/runners'
@@ -80,4 +83,5 @@ export const adminRunnerApi = {
   cordon: (id: number, cordoned: boolean) => api.post<ApiResponse<Runner>>(`${adminBase}/${id}/cordon`, { cordoned }),
   regenerateToken: (id: number) => api.post<ApiResponse<{ token: string }>>(`${adminBase}/${id}/token`, {}),
   remove: (id: number) => api.delete<ApiResponse<{ message: string }>>(`${adminBase}/${id}`),
+  statusEventsUrl: () => sseUrl(`${adminBase}/events`),
 }

@@ -29,6 +29,7 @@ const ownedAdapter = computed<RunnerAdapter>(() => {
     remove: async (rid) => {
       await runnerApi.remove(id, rid)
     },
+    eventsUrl: () => runnerApi.statusEventsUrl(id),
   }
 })
 

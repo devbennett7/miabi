@@ -57,6 +57,14 @@ func (r *Router) runnerRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodGet,
+			Path:        base + "/events",
+			Group:       g,
+			Middlewares: scoped(models.WorkspaceRoleViewer),
+			Handler:     r.h.runner.StatusEvents,
+			Summary:     "Stream the workspace's runners connecting and disconnecting (SSE)",
+		},
+		{
+			Method:      http.MethodGet,
 			Path:        base + "/shared",
 			Group:       g,
 			Middlewares: scoped(models.WorkspaceRoleViewer),
@@ -147,6 +155,14 @@ func (r *Router) adminRunnerRoutes() []okapi.RouteDefinition {
 			Handler:     okapi.H(r.h.adminRunner.Create),
 			Summary:     "Register a shared runner (returns a one-time token)",
 			Request:     &handlers.RunnerRequest{},
+		},
+		{
+			Method:      http.MethodGet,
+			Path:        "/events",
+			Group:       g,
+			Middlewares: admin,
+			Handler:     r.h.adminRunner.StatusEvents,
+			Summary:     "Stream the shared runners connecting and disconnecting (SSE)",
 		},
 		{
 			Method:      http.MethodGet,
