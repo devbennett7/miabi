@@ -76,25 +76,27 @@ func (h *OAuthAdminHandler) canHide() bool { return hiddenAllowed(h.ee) }
 
 type CreateOAuthProviderRequest struct {
 	Body struct {
-		DisplayName        string `json:"display_name" required:"true"`
-		Name               string `json:"name"`
-		Type               string `json:"type" required:"true" enum:"google,oidc"`
-		ClientID           string `json:"client_id" required:"true"`
-		ClientSecret       string `json:"client_secret" required:"true"`
-		Issuer             string `json:"issuer"`
-		AuthURL            string `json:"auth_url"`
-		TokenURL           string `json:"token_url"`
-		UserInfoURL        string `json:"userinfo_url"`
-		Scopes             string `json:"scopes"`
-		Enabled            *bool  `json:"enabled"`
-		Hidden             *bool  `json:"hidden"`
-		AutoRegister       *bool  `json:"auto_register"`
-		AllowedDomains     string `json:"allowed_domains"`
-		EmailClaim         string `json:"email_claim"`
-		NameClaim          string `json:"name_claim"`
-		UsernameClaim      string `json:"username_claim"`
-		DefaultWorkspaceID *uint  `json:"default_workspace_id"`
-		DefaultRole        string `json:"default_role" enum:"owner,admin,developer,viewer"`
+		DisplayName  string `json:"display_name" required:"true"`
+		Name         string `json:"name"`
+		Type         string `json:"type" required:"true" enum:"google,oidc"`
+		ClientID     string `json:"client_id" required:"true"`
+		ClientSecret string `json:"client_secret" required:"true"`
+		Issuer       string `json:"issuer"`
+		AuthURL      string `json:"auth_url"`
+		TokenURL     string `json:"token_url"`
+		UserInfoURL  string `json:"userinfo_url"`
+		Scopes       string `json:"scopes"`
+		Enabled      *bool  `json:"enabled"`
+		Hidden       *bool  `json:"hidden"`
+		AutoRegister *bool  `json:"auto_register"`
+		// AllowUnverifiedEmail accepts identities whose email the provider has not verified.
+		AllowUnverifiedEmail *bool  `json:"allow_unverified_email"`
+		AllowedDomains       string `json:"allowed_domains"`
+		EmailClaim           string `json:"email_claim"`
+		NameClaim            string `json:"name_claim"`
+		UsernameClaim        string `json:"username_claim"`
+		DefaultWorkspaceID   *uint  `json:"default_workspace_id"`
+		DefaultRole          string `json:"default_role" enum:"owner,admin,developer,viewer"`
 		// OrganizationID is the realm accounts this provider registers belong to. Null leaves them
 		// in the default organization. Set once, here: it never moves an account that already
 		// exists, so changing it later would only split the provider's users across two tenants.
@@ -107,23 +109,25 @@ type UpdateOAuthProviderRequest struct {
 		// DisplayName edits the login-button label. The Name handle is immutable
 		// here because it is part of the provider's OAuth callback URL, and so is the
 		// organization, which the accounts it already registered belong to.
-		DisplayName        string  `json:"display_name"`
-		ClientID           string  `json:"client_id"`
-		ClientSecret       string  `json:"client_secret"` // blank keeps the stored secret
-		Issuer             string  `json:"issuer"`
-		AuthURL            string  `json:"auth_url"`
-		TokenURL           string  `json:"token_url"`
-		UserInfoURL        string  `json:"userinfo_url"`
-		Scopes             string  `json:"scopes"`
-		Enabled            *bool   `json:"enabled"`
-		Hidden             *bool   `json:"hidden"`
-		AutoRegister       *bool   `json:"auto_register"`
-		AllowedDomains     *string `json:"allowed_domains"`
-		EmailClaim         *string `json:"email_claim"`
-		NameClaim          *string `json:"name_claim"`
-		UsernameClaim      *string `json:"username_claim"`
-		DefaultWorkspaceID *uint   `json:"default_workspace_id"`
-		DefaultRole        *string `json:"default_role" enum:"owner,admin,developer,viewer"`
+		DisplayName  string `json:"display_name"`
+		ClientID     string `json:"client_id"`
+		ClientSecret string `json:"client_secret"` // blank keeps the stored secret
+		Issuer       string `json:"issuer"`
+		AuthURL      string `json:"auth_url"`
+		TokenURL     string `json:"token_url"`
+		UserInfoURL  string `json:"userinfo_url"`
+		Scopes       string `json:"scopes"`
+		Enabled      *bool  `json:"enabled"`
+		Hidden       *bool  `json:"hidden"`
+		AutoRegister *bool  `json:"auto_register"`
+		// AllowUnverifiedEmail accepts identities whose email the provider has not verified.
+		AllowUnverifiedEmail *bool   `json:"allow_unverified_email"`
+		AllowedDomains       *string `json:"allowed_domains"`
+		EmailClaim           *string `json:"email_claim"`
+		NameClaim            *string `json:"name_claim"`
+		UsernameClaim        *string `json:"username_claim"`
+		DefaultWorkspaceID   *uint   `json:"default_workspace_id"`
+		DefaultRole          *string `json:"default_role" enum:"owner,admin,developer,viewer"`
 	} `json:"body"`
 }
 
@@ -164,26 +168,27 @@ func (h *OAuthAdminHandler) Create(c *okapi.Context, req *CreateOAuthProviderReq
 	}
 
 	p := &models.OAuthProvider{
-		Name:               s,
-		DisplayName:        strings.TrimSpace(req.Body.DisplayName),
-		Type:               models.OAuthProviderType(req.Body.Type),
-		ClientID:           strings.TrimSpace(req.Body.ClientID),
-		ClientSecretEnc:    enc,
-		Issuer:             strings.TrimSpace(req.Body.Issuer),
-		AuthURL:            strings.TrimSpace(req.Body.AuthURL),
-		TokenURL:           strings.TrimSpace(req.Body.TokenURL),
-		UserInfoURL:        strings.TrimSpace(req.Body.UserInfoURL),
-		Scopes:             strings.TrimSpace(req.Body.Scopes),
-		Enabled:            boolOr(req.Body.Enabled, true),
-		Hidden:             boolOr(req.Body.Hidden, false) && h.canHide(),
-		AutoRegister:       boolOr(req.Body.AutoRegister, true),
-		AllowedDomains:     strings.TrimSpace(req.Body.AllowedDomains),
-		EmailClaim:         strings.TrimSpace(req.Body.EmailClaim),
-		NameClaim:          strings.TrimSpace(req.Body.NameClaim),
-		UsernameClaim:      strings.TrimSpace(req.Body.UsernameClaim),
-		DefaultWorkspaceID: req.Body.DefaultWorkspaceID,
-		DefaultRole:        models.WorkspaceRole(strings.TrimSpace(req.Body.DefaultRole)),
-		OrganizationID:     normalizeOrgID(req.Body.OrganizationID),
+		Name:                 s,
+		DisplayName:          strings.TrimSpace(req.Body.DisplayName),
+		Type:                 models.OAuthProviderType(req.Body.Type),
+		ClientID:             strings.TrimSpace(req.Body.ClientID),
+		ClientSecretEnc:      enc,
+		Issuer:               strings.TrimSpace(req.Body.Issuer),
+		AuthURL:              strings.TrimSpace(req.Body.AuthURL),
+		TokenURL:             strings.TrimSpace(req.Body.TokenURL),
+		UserInfoURL:          strings.TrimSpace(req.Body.UserInfoURL),
+		Scopes:               strings.TrimSpace(req.Body.Scopes),
+		Enabled:              boolOr(req.Body.Enabled, true),
+		Hidden:               boolOr(req.Body.Hidden, false) && h.canHide(),
+		AutoRegister:         boolOr(req.Body.AutoRegister, true),
+		AllowUnverifiedEmail: boolOr(req.Body.AllowUnverifiedEmail, false),
+		AllowedDomains:       strings.TrimSpace(req.Body.AllowedDomains),
+		EmailClaim:           strings.TrimSpace(req.Body.EmailClaim),
+		NameClaim:            strings.TrimSpace(req.Body.NameClaim),
+		UsernameClaim:        strings.TrimSpace(req.Body.UsernameClaim),
+		DefaultWorkspaceID:   req.Body.DefaultWorkspaceID,
+		DefaultRole:          models.WorkspaceRole(strings.TrimSpace(req.Body.DefaultRole)),
+		OrganizationID:       normalizeOrgID(req.Body.OrganizationID),
 	}
 	if err := h.oauth.ResolveEndpoints(c.Request().Context(), p); err != nil {
 		return c.AbortBadRequest(err.Error())
@@ -234,6 +239,9 @@ func (h *OAuthAdminHandler) Update(c *okapi.Context, req *UpdateOAuthProviderReq
 	}
 	if req.Body.AutoRegister != nil {
 		p.AutoRegister = *req.Body.AutoRegister
+	}
+	if req.Body.AllowUnverifiedEmail != nil {
+		p.AllowUnverifiedEmail = *req.Body.AllowUnverifiedEmail
 	}
 	if req.Body.AllowedDomains != nil {
 		p.AllowedDomains = strings.TrimSpace(*req.Body.AllowedDomains)

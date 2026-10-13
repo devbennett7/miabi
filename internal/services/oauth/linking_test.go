@@ -69,6 +69,20 @@ func TestAuthenticate_RefusesToLinkAnUnverifiedEmail(t *testing.T) {
 	}
 }
 
+// A directory that never sends email_verified can be trusted explicitly by an admin.
+func TestAuthenticate_LinksAnUnverifiedEmailWhenTheProviderAllowsIt(t *testing.T) {
+	s, db, idp := registerService(t, "admin@acme.test")
+	admin := seedUser(t, db, "admin@acme.test")
+	idp.assert(map[string]any{"sub": "admin-sub", "email": "admin@acme.test"})
+	p := providerFor(idp, nil)
+	p.AllowUnverifiedEmail = true
+
+	u, err := s.Authenticate(context.Background(), p, "code", "http://localhost/cb")
+	if err != nil || u.ID != admin.ID {
+		t.Fatalf("got user %v, err %v; want the admin linked", u, err)
+	}
+}
+
 // Some providers send the claim as a string; "true" still links.
 func TestAuthenticate_LinksAVerifiedEmailSentAsAString(t *testing.T) {
 	s, db, idp := registerService(t, "admin@acme.test")
