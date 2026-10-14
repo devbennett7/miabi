@@ -103,7 +103,8 @@
       "grace": "Your license has expired and is in its grace period — renew to avoid losing access to paid features.",
       "nodeLimit": "You have exceeded your licensed node limit — adding nodes is blocked."
     },
-    "releaseNotes": "Release notes →"
+    "releaseNotes": "Release notes →",
+    "securityRelease": "Security release"
   },
   "adminNav": {
     "enterprise": {
@@ -3419,7 +3420,8 @@
     "liveHint": "Status updates live",
     "reconnectingHint": "Reconnecting — statuses may lag",
     "waitingToConnect": "Waiting for the runner to connect…",
-    "connectedOnline": "Runner connected — it is online."
+    "connectedOnline": "Runner connected — it is online.",
+    "updateAvailable": "{version} available"
   },
   "saveAsSecret": {
     "optional": "(optional)",

@@ -15,6 +15,8 @@ export interface Runner {
   os?: string
   arch?: string
   version?: string
+  /** Set when a newer runner release exists. */
+  latest_version?: string
   // features the runner reports supporting, such as "multi-platform"
   features?: string[]
   remote_ip?: string

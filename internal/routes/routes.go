@@ -664,14 +664,15 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		logger.Error("failed to register account purge job", "error", err)
 	}
 
-	// Daily release checks. The minute is arbitrary but not :00 — every Miabi in
-	// the world sharing one cron minute would stampede the GitHub API — and the two
-	// components are minutes apart rather than together, for the same reason.
+	// Daily release check: one request to versions.miabi.io covers every component. The minute is arbitrary
+	// but not :00, so installs don't all converge on one minute.
 	updateService := updatecheck.NewService(db, config.Version, cfg.UpdateCheck)
 	agentUpdateService := updatecheck.NewAgentService(db, cfg.UpdateCheck)
+	runnerUpdateService := updatecheck.NewComponentService(db, updatecheck.ComponentRunner, cfg.UpdateCheck)
+	updateChecker := updatecheck.NewChecker(config.Version, updateService, agentUpdateService, runnerUpdateService,
+		updatecheck.NewComponentService(db, updatecheck.ComponentGateway, cfg.UpdateCheck))
 	if cronManager != nil {
-		registerUpdateCheck(cronManager, updateService, "update-check", "Check for a new Miabi release", "37 4 * * *")
-		registerUpdateCheck(cronManager, agentUpdateService, "agent-update-check", "Check for a new node agent release", "43 4 * * *")
+		registerUpdateCheck(cronManager, updateChecker)
 	}
 	telemetryService := telemetry.New(telemetry.Options{
 		Version:   config.Version,
@@ -1569,6 +1570,8 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// Annotate runners' live-tunnel status from the runner connection manager.
 	r.h.runner.SetConnRegistry(runnerManager)
 	r.h.adminRunner.SetConnRegistry(runnerManager)
+	r.h.runner.SetRunnerReleases(runnerUpdateService)
+	r.h.adminRunner.SetRunnerReleases(runnerUpdateService)
 	r.h.runner.SetEventBus(bus)
 	r.h.adminRunner.SetEventBus(bus)
 	runnerManager.AddStatusListener(r.h.runner.PublishStatus)
@@ -1956,30 +1959,28 @@ func registerTelemetry(cronManager *cronpkg.Manager, svc *telemetry.Service) {
 	go svc.SendStartup(context.Background())
 }
 
-// registerUpdateCheck schedules one component's daily release check and seeds its cache shortly
-// after boot, so a fresh install does not wait a day for its first answer.
-func registerUpdateCheck(cronManager *cronpkg.Manager, svc *updatecheck.Service, kind, name, spec string) {
-	if !svc.Enabled() {
+// registerUpdateCheck schedules the daily release check and seeds the cache shortly after boot, so a fresh
+// install does not wait a day for its first answer.
+func registerUpdateCheck(cronManager *cronpkg.Manager, checker *updatecheck.Checker) {
+	if !checker.Enabled() {
 		return
 	}
-	if err := cronManager.RegisterTask(kind, 0, name, spec, func() error {
+	check := func(what string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-
-		if err := svc.Check(ctx); err != nil {
-			logger.Warn("update check failed", "component", svc.Component(), "error", err)
+		if err := checker.Check(ctx); err != nil {
+			logger.Warn(what+" failed", "error", err)
 		}
+	}
+	if err := cronManager.RegisterTask("update-check", 0, "Check for new Miabi, agent, runner and gateway releases", "37 4 * * *", func() error {
+		check("update check")
 		return nil
 	}); err != nil {
-		logger.Error("failed to register update check job", "component", svc.Component(), "error", err)
+		logger.Error("failed to register update check job", "error", err)
 	}
-	// Off the startup path: never block serving on GitHub.
+	// Off the startup path: never block serving on the network.
 	go func() {
 		time.Sleep(30 * time.Second)
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := svc.Check(ctx); err != nil {
-			logger.Warn("initial update check failed", "component", svc.Component(), "error", err)
-		}
+		check("initial update check")
 	}()
 }

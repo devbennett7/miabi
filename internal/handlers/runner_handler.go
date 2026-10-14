@@ -29,6 +29,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/audit"
 	"github.com/miabi-io/miabi/internal/services/eventbus"
 	"github.com/miabi-io/miabi/internal/services/runner"
+	"github.com/miabi-io/miabi/internal/services/updatecheck"
 )
 
 // RunnerConnRegistry reports whether a runner currently has a live tunnel.
@@ -42,10 +43,11 @@ type RunnerConnRegistry interface {
 // cordons and removes its own runners. The one-time registration token is returned only at
 // create or regenerate (hashed at rest, never read back).
 type RunnerHandler struct {
-	svc   *runner.Service
-	conn  RunnerConnRegistry
-	bus   *eventbus.Bus
-	audit *audit.Logger
+	svc      *runner.Service
+	conn     RunnerConnRegistry
+	releases AgentReleases
+	bus      *eventbus.Bus
+	audit    *audit.Logger
 }
 
 func NewRunnerHandler(svc *runner.Service, auditLog *audit.Logger) *RunnerHandler {
@@ -56,20 +58,37 @@ func NewRunnerHandler(svc *runner.Service, auditLog *audit.Logger) *RunnerHandle
 // transient Connected flag (nil-safe).
 func (h *RunnerHandler) SetConnRegistry(c RunnerConnRegistry) { h.conn = c }
 
-// annotate sets the transient Connected flag on each runner from the live
-// tunnel registry (a no-op when no registry is wired).
+// SetRunnerReleases wires the newest known runner release, used to flag outdated runners (nil-safe).
+func (h *RunnerHandler) SetRunnerReleases(r AgentReleases) { h.releases = r }
+
+// annotate sets the transient Connected flag from the live tunnel registry and LatestVersion when a newer
+// runner release exists. Computed per request: the runner's build and the release move independently.
 func (h *RunnerHandler) annotate(runners []models.Runner) {
-	if h.conn == nil {
-		return
-	}
+	latest := h.latestRelease()
 	for i := range runners {
-		runners[i].Connected = h.conn.Connected(runners[i].ID)
+		h.annotateWith(&runners[i], latest)
 	}
 }
 
 func (h *RunnerHandler) annotateOne(r *models.Runner) {
-	if h.conn != nil && r != nil {
+	if r != nil {
+		h.annotateWith(r, h.latestRelease())
+	}
+}
+
+func (h *RunnerHandler) latestRelease() string {
+	if h.releases == nil {
+		return ""
+	}
+	return h.releases.LatestVersion()
+}
+
+func (h *RunnerHandler) annotateWith(r *models.Runner, latest string) {
+	if h.conn != nil {
 		r.Connected = h.conn.Connected(r.ID)
+	}
+	if updatecheck.IsNewer(r.Version, latest) {
+		r.LatestVersion = latest
 	}
 }
 

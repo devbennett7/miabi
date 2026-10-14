@@ -132,9 +132,10 @@ async function lockConsole() {
 
       <!-- A newer Miabi release exists. Links to the release notes; it never
            upgrades anything on its own. -->
-      <div v-if="showUpdateBanner" class="update-banner">
-        <span class="mdi mdi-arrow-up-bold-circle-outline update-banner-icon"></span>
+      <div v-if="showUpdateBanner" class="update-banner" :class="{ 'update-banner-security': update?.security }">
+        <span class="mdi update-banner-icon" :class="update?.security ? 'mdi-shield-alert-outline' : 'mdi-arrow-up-bold-circle-outline'"></span>
         <span class="update-banner-text">
+          <span v-if="update?.security" class="badge badge-danger update-banner-tag">{{ $t('adminLayout.securityRelease') }}</span>
           <strong>Miabi {{ update?.latest_version }}</strong> is available — you're running
           {{ update?.current_version }}.
         </span>
@@ -229,6 +230,24 @@ async function lockConsole() {
 
 .update-banner-cta:hover {
   text-decoration: underline;
+}
+
+.update-banner-security {
+  border-color: var(--danger-500, #dc2626);
+  background: var(--danger-50, rgba(220, 38, 38, 0.08));
+}
+
+[data-theme="dark"] .update-banner-security {
+  border-color: var(--danger-800, #dc26264c);
+}
+
+.update-banner-security .update-banner-icon,
+.update-banner-security .update-banner-cta {
+  color: var(--danger-500, #dc2626);
+}
+
+.update-banner-tag {
+  margin-right: 6px;
 }
 
 .update-banner-dismiss {

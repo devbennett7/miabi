@@ -20,10 +20,6 @@
 package updatecheck
 
 import (
-	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/miabi-io/miabi/internal/models"
@@ -31,43 +27,6 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
-
-// The agent channel is stable-only, and it must hold whether or not the maintainer remembered to
-// tick GitHub's prerelease box. The agent carries a real "v0.1-rc.1" tag that predates the habit.
-func TestAgentChannelExcludesPrereleaseTags(t *testing.T) {
-	rs := []Release{
-		rel("v0.4.0", false),
-		rel("v0.5.0-rc.1", true),    // flagged
-		rel("v0.6.0-beta.2", false), // NOT flagged — only the tag gives it away
-		rel("v0.1-rc.1", false),
-	}
-	got, ok := Latest(rs, true)
-	if !ok || got.TagName != "v0.4.0" {
-		t.Fatalf("stable-only picked %q (ok=%v), want v0.4.0", got.TagName, ok)
-	}
-	// Without the restriction the newest wins, prerelease or not.
-	got, ok = Latest(rs, false)
-	if !ok || got.TagName != "v0.6.0-beta.2" {
-		t.Fatalf("unrestricted picked %q (ok=%v), want v0.6.0-beta.2", got.TagName, ok)
-	}
-}
-
-// A stable platform build must not be offered an unflagged release candidate either.
-func TestNewestIgnoresUnflaggedPrereleaseTag(t *testing.T) {
-	if got, ok := Newest("1.0.0", []Release{rel("v1.1.0-rc.1", false)}); ok {
-		t.Fatalf("stable build offered unflagged prerelease %q", got.TagName)
-	}
-}
-
-func TestLatestSkipsDraftsAndJunkTags(t *testing.T) {
-	draft := rel("v9.9.9", false)
-	draft.Draft = true
-	rs := []Release{draft, rel("nightly", false), rel("v0.4.0", false)}
-	got, ok := Latest(rs, true)
-	if !ok || got.TagName != "v0.4.0" {
-		t.Fatalf("got %q (ok=%v), want v0.4.0", got.TagName, ok)
-	}
-}
 
 func TestClassifyAgent(t *testing.T) {
 	cases := []struct {
@@ -105,46 +64,6 @@ func TestAgentSupportedNeedsNoReleaseData(t *testing.T) {
 	// An unreadable version is not evidence of being old.
 	if !AgentSupported("some-commit-sha") {
 		t.Error("an unparseable version was called unsupported")
-	}
-}
-
-// Each component keeps its own row, so the agent's verdict cannot overwrite the platform's.
-func TestComponentsAreStoredSeparately(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tag := "v9.9.9"
-		if r.URL.Path == "/repos/"+RepoAgent+"/releases" {
-			tag = "v0.5.0"
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode([]Release{rel(tag, false)})
-	}))
-	defer srv.Close()
-
-	db := testDB(t)
-	mi := NewService(db, "1.0.0", true)
-	mi.setBaseURL(srv.URL)
-	ag := NewAgentService(db, true)
-	ag.setBaseURL(srv.URL)
-
-	if err := mi.Check(context.Background()); err != nil {
-		t.Fatalf("miabi check: %v", err)
-	}
-	if err := ag.Check(context.Background()); err != nil {
-		t.Fatalf("agent check: %v", err)
-	}
-
-	var rows []models.UpdateStatus
-	if err := db.Find(&rows).Error; err != nil {
-		t.Fatalf("read rows: %v", err)
-	}
-	if len(rows) != 2 {
-		t.Fatalf("got %d status rows, want one per component", len(rows))
-	}
-	if v := mi.LatestVersion(); v != "v9.9.9" {
-		t.Errorf("miabi latest = %q, want v9.9.9", v)
-	}
-	if v := ag.LatestVersion(); v != "v0.5.0" {
-		t.Errorf("agent latest = %q, want v0.5.0", v)
 	}
 }
 

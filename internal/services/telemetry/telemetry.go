@@ -111,9 +111,6 @@ func InstallationID(installID string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// URL is where events are sent.
-func (s *Service) URL() string { return s.opts.URL }
-
 // Enabled reports whether events are sent at all. Non-release builds never send so development and CI
 // don't count as installations.
 func (s *Service) Enabled() bool {

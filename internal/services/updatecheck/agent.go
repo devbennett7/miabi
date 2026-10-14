@@ -58,7 +58,7 @@ func AgentSupported(current string) bool {
 }
 
 // ClassifyAgent places a node's agent against the floor and the newest known release. latest may be
-// empty — an install that cannot reach GitHub still gets the unsupported verdict, which is the one
+// empty — an install that cannot reach versions.miabi.io still gets the unsupported verdict, which is the one
 // that matters and the one that needs no network.
 func ClassifyAgent(current, latest string) AgentState {
 	if normalize(current) == "" {
