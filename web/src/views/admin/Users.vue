@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { usePagination } from '@/composables/usePagination'
 import Pagination from '@/components/Pagination.vue'
 import AppModal from '@/components/AppModal.vue'
+import GeneratedPasswordModal from '@/components/GeneratedPasswordModal.vue'
 import OrganizationPicker from '@/components/OrganizationPicker.vue'
 import { useLicenseStore } from '@/stores/license'
 
@@ -54,12 +55,13 @@ function fmtDate(s?: string | null): string {
 
 // --- Create modal ---
 const showCreate = ref(false)
+// The server generates the new user's temporary password; it is shown once, right after creation.
+const createdPassword = ref<string | null>(null)
 const creating = ref(false)
 const createForm = ref<{
   name: string
   username: string
   email: string
-  password: string
   role: 'admin' | 'user'
   notify: boolean
   organization_id: number
@@ -67,26 +69,24 @@ const createForm = ref<{
   name: '',
   username: '',
   email: '',
-  password: '',
   role: 'user',
   notify: true,
   organization_id: 0,
 })
 
 function openCreate() {
-  createForm.value = { name: '', username: '', email: '', password: '', role: 'user', notify: true, organization_id: 0 }
+  createForm.value = { name: '', username: '', email: '', role: 'user', notify: true, organization_id: 0 }
   showCreate.value = true
 }
 
 async function submitCreate() {
-  if (!createForm.value.name.trim() || !createForm.value.email.trim() || createForm.value.password.length < 8) return
+  if (!createForm.value.name.trim() || !createForm.value.email.trim()) return
   creating.value = true
   try {
-    await adminApi.createUser({
+    const res = await adminApi.createUser({
       name: createForm.value.name.trim(),
       username: createForm.value.username.trim() || undefined,
       email: createForm.value.email.trim(),
-      password: createForm.value.password,
       role: createForm.value.role,
       notify: createForm.value.notify,
       // Only sent when one was chosen: the field is entitled, so a Community install creating an
@@ -94,6 +94,7 @@ async function submitCreate() {
       ...(createForm.value.organization_id ? { organization_id: createForm.value.organization_id } : {}),
     })
     notify.success('User created')
+    createdPassword.value = res.data.data?.password ?? null
     showCreate.value = false
     await goToPage(0)
   } catch (e) {
@@ -217,18 +218,6 @@ onBeforeUnmount(() => {
               <input v-model="createForm.email" class="form-input" type="email" placeholder="jane@example.com" required />
             </div>
             <div class="form-group">
-              <label class="form-label">Password</label>
-              <input
-                v-model="createForm.password"
-                class="form-input"
-                type="password"
-                placeholder="At least 8 characters"
-                minlength="8"
-                required
-              />
-              <span class="form-hint">Minimum 8 characters.</span>
-            </div>
-            <div class="form-group">
               <label class="form-label">Role</label>
               <select v-model="createForm.role" class="form-select">
                 <option value="user">User</option>
@@ -254,13 +243,16 @@ onBeforeUnmount(() => {
             <button
               type="submit"
               class="btn btn-primary"
-              :disabled="creating || !createForm.name.trim() || !createForm.email.trim() || createForm.password.length < 8"
+              :disabled="creating || !createForm.name.trim() || !createForm.email.trim()"
             >
               {{ creating ? 'Creating…' : 'Create user' }}
             </button>
           </div>
         </form>
       </AppModal>
+      <GeneratedPasswordModal v-if="createdPassword" title="User created" :password="createdPassword" @close="createdPassword = null">
+        A temporary password was generated; they'll be asked to choose their own at first sign-in.
+      </GeneratedPasswordModal>
     </Teleport>
 
   </div>

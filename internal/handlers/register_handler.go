@@ -37,11 +37,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// MinRegistrationPasswordLen is the floor for a self-chosen password. An account
-// created this way is not handed a temporary one by an admin, so this is the only
-// gate on it.
-const MinRegistrationPasswordLen = 12
-
 // RegisterHandler owns self-service sign-up.
 type RegisterHandler struct {
 	reg        *registration.Service
@@ -95,8 +90,8 @@ func (h *RegisterHandler) Register(c *okapi.Context, req *RegisterRequest) error
 	if !strings.Contains(email, "@") {
 		return c.AbortBadRequest("a valid email address is required")
 	}
-	if len([]rune(req.Body.Password)) < MinRegistrationPasswordLen {
-		return c.AbortBadRequest("password must be at least 12 characters")
+	if err := models.CheckNewPassword(req.Body.Password); err != nil {
+		return c.AbortBadRequest(err.Error())
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Body.Password), bcrypt.DefaultCost)
@@ -287,8 +282,8 @@ func (h *RegisterHandler) RegisterFromInvitation(c *okapi.Context, req *Register
 	if name == "" {
 		return c.AbortBadRequest("a name is required")
 	}
-	if len([]rune(req.Body.Password)) < MinRegistrationPasswordLen {
-		return c.AbortBadRequest("password must be at least 12 characters")
+	if err := models.CheckNewPassword(req.Body.Password); err != nil {
+		return c.AbortBadRequest(err.Error())
 	}
 	p, err := h.workspaces.PreviewInvitation(token)
 	if err != nil {

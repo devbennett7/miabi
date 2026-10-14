@@ -807,6 +807,9 @@ func (c *Config) ValidateAdminSeed() error {
 	if c.AdminPassword == "" || c.AdminPassword == defaultAdminPassword {
 		return fmt.Errorf("MIABI_ADMIN_PASSWORD must be set to a non-default value to seed the platform admin in non-dev environments")
 	}
+	if err := models.CheckNewPassword(c.AdminPassword); err != nil {
+		return fmt.Errorf("MIABI_ADMIN_PASSWORD: %w", err)
+	}
 	return nil
 }
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { MIN_PASSWORD_LENGTH } from '@/constants/password'
 import { useRouter, useRoute } from 'vue-router'
 import { authApi } from '@/api/auth'
 import { apiErrorMessage } from '@/api/client'
@@ -18,8 +19,8 @@ const loading = ref(false)
 const done = ref(false)
 const passwordInput = ref<HTMLInputElement | null>(null)
 
-const MIN_LEN = 8
-// Mirror the backend rules (minLength 8) plus a local match check so the user
+const MIN_LEN = MIN_PASSWORD_LENGTH
+// Mirror the backend rules plus a local match check so the user
 // gets immediate feedback before submitting.
 const tooShort = computed(() => password.value.length > 0 && password.value.length < MIN_LEN)
 const mismatch = computed(() => confirm.value.length > 0 && confirm.value !== password.value)
@@ -80,7 +81,7 @@ async function submit() {
             v-model="password"
             :type="showPassword ? 'text' : 'password'"
             class="form-input"
-            :placeholder="$t('resetPassword.atLeast8Characters')"
+            :placeholder="$t('resetPassword.atLeastCharacters', { n: MIN_LEN })"
             autocomplete="new-password"
             :aria-label="$t('security.newPassword')"
             :disabled="loading"

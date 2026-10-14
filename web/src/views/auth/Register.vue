@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { MIN_PASSWORD_LENGTH } from '@/constants/password'
 import { useRouter } from 'vue-router'
 import { authApi } from '@/api/auth'
 import { apiErrorMessage } from '@/api/client'
@@ -29,7 +30,7 @@ const nameInput = ref<HTMLInputElement | null>(null)
 
 // Matches handlers.MinRegistrationPasswordLen. Checked here for the message, and
 // again on the server, which is the one that counts.
-const MIN_PASSWORD = 12
+const MIN_PASSWORD = MIN_PASSWORD_LENGTH
 
 onMounted(async () => {
   // Sign-up is off by default and can be switched off at any time, so a bookmarked

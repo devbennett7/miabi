@@ -190,14 +190,14 @@ type ForgotPasswordRequest struct {
 type ResetPasswordRequest struct {
 	Body struct {
 		Token    string `json:"token" required:"true"`
-		Password string `json:"password" required:"true" minLength:"8"`
+		Password string `json:"password" required:"true" minLength:"12"`
 	} `json:"body"`
 }
 
 type ChangePasswordRequest struct {
 	Body struct {
 		CurrentPassword string `json:"current_password" required:"true"`
-		NewPassword     string `json:"new_password" required:"true" minLength:"8"`
+		NewPassword     string `json:"new_password" required:"true" minLength:"12"`
 	} `json:"body"`
 }
 
@@ -473,7 +473,7 @@ func (h *AuthHandler) Login(c *okapi.Context, req *LoginRequest) error {
 type CompletePasswordResetRequest struct {
 	Body struct {
 		ResetToken  string `json:"reset_token" required:"true"`
-		NewPassword string `json:"new_password" required:"true" minLength:"8"`
+		NewPassword string `json:"new_password" required:"true" minLength:"12"`
 	} `json:"body"`
 }
 
@@ -482,6 +482,9 @@ type CompletePasswordResetRequest struct {
 // session, so the user never re-enters the admin-set password.
 func (h *AuthHandler) CompletePasswordReset(c *okapi.Context, req *CompletePasswordResetRequest) error {
 	user, err := h.auth.CompletePasswordReset(c.Request().Context(), req.Body.ResetToken, req.Body.NewPassword)
+	if errors.Is(err, models.ErrPasswordTooShort) {
+		return c.AbortBadRequest(err.Error())
+	}
 	if err != nil {
 		return c.AbortUnauthorized("this password-reset session has expired — sign in again")
 	}
@@ -770,6 +773,9 @@ func (h *AuthHandler) ForgotPassword(c *okapi.Context, req *ForgotPasswordReques
 // ResetPassword consumes a reset token and sets a new password.
 func (h *AuthHandler) ResetPassword(c *okapi.Context, req *ResetPasswordRequest) error {
 	uid, err := h.auth.ResetPassword(req.Body.Token, req.Body.Password)
+	if errors.Is(err, models.ErrPasswordTooShort) {
+		return c.AbortBadRequest(err.Error())
+	}
 	if err != nil {
 		return c.AbortBadRequest("invalid or expired reset token")
 	}
@@ -784,6 +790,9 @@ func (h *AuthHandler) ChangePassword(c *okapi.Context, req *ChangePasswordReques
 	if err := h.auth.ChangePassword(uid, req.Body.CurrentPassword, req.Body.NewPassword); err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			return c.AbortBadRequest("current password is incorrect")
+		}
+		if errors.Is(err, models.ErrPasswordTooShort) {
+			return c.AbortBadRequest(err.Error())
 		}
 		return c.AbortInternalServerError("failed to change password", err)
 	}

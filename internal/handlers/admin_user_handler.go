@@ -211,7 +211,8 @@ type AdminCreateUserRequest struct {
 		// local-part when omitted. Slug-validated; reserved/taken handles rejected.
 		Username string `json:"username"`
 		Email    string `json:"email" required:"true" format:"email"`
-		Password string `json:"password" required:"true" minLength:"8"`
+		// Password is the user's temporary password. Omitted, one is generated and returned once.
+		Password string `json:"password"`
 		Role     string `json:"role" enum:"admin,user"`
 		// Notify, when true, emails the new user a welcome with a sign-in link
 		// (requires a configured system SMTP server).
@@ -382,7 +383,15 @@ func (h *AdminUserHandler) Create(c *okapi.Context, req *AdminCreateUserRequest)
 		}
 		return c.AbortBadRequest(err.Error())
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(req.Body.Password), bcrypt.DefaultCost)
+	password, generated := req.Body.Password, req.Body.Password == ""
+	if generated {
+		if password, err = generatePassword(); err != nil {
+			return c.AbortInternalServerError("failed to generate a password", err)
+		}
+	} else if err := models.CheckNewPassword(password); err != nil {
+		return c.AbortBadRequest(err.Error())
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return c.AbortInternalServerError("failed to hash password", err)
 	}
@@ -426,7 +435,18 @@ func (h *AdminUserHandler) Create(c *okapi.Context, req *AdminCreateUserRequest)
 	if req.Body.Notify {
 		h.mailer.SendWelcome(user.Email, user.Name)
 	}
-	return created(c, user)
+	resp := AdminCreateUserResponse{User: user}
+	if generated {
+		resp.Password = password
+	}
+	return created(c, resp)
+}
+
+// AdminCreateUserResponse is the new user and, when the server generated it, their temporary password.
+// It is returned only here: it is not stored in clear and cannot be read back.
+type AdminCreateUserResponse struct {
+	*models.User
+	Password string `json:"password,omitempty"`
 }
 
 // Update changes a user's role, active flag, username and/or email-verified state.
@@ -706,7 +726,7 @@ func (h *AdminUserHandler) ResetPassword(c *okapi.Context) error {
 }
 
 // generatePassword returns a strong random password from an unambiguous alphabet (no 0/O/1/l/I),
-// backed by crypto/rand — used for admin-initiated resets.
+// backed by crypto/rand — used for admin-created accounts and admin-initiated resets.
 func generatePassword() (string, error) {
 	const alphabet = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	const n = 20
