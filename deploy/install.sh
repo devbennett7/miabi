@@ -46,11 +46,12 @@
 #                               otherwise ~/.miabi)
 #   MIABI_BIN_DIR               where the miabi CLI is installed (default /usr/local/bin as root,
 #                               otherwise ~/.local/bin)
-#   MIABI_VERSION               Miabi release to install       (default: pinned below)
-#   MIABI_CLI_VERSION           miabi CLI release to install   (default: pinned below)
+#   MIABI_VERSION               Miabi release to install       (default: newest stable, from
+#                               versions.miabi.io)
+#   MIABI_CLI_VERSION           miabi CLI release to install   (default: newest stable)
 #   MIABI_CLI_BASE_URL          mirror to fetch the CLI from    (default: the GitHub release)
-#   GOMA_VERSION                Goma Gateway release           (default: pinned below)
-#   RUNNER_VERSION              miabi/runner release           (default: latest)
+#   GOMA_VERSION                Goma Gateway release           (default: the one Miabi was tested with)
+#   RUNNER_VERSION              miabi/runner release           (default: the one Miabi was tested with)
 #   MIABI_SKIP_DOCKER_INSTALL   1 = never touch the host's packages; Docker must exist
 #   MIABI_FORCE_STACK           1 = install even though a Compose stack is present
 #   ASSUME_YES                  1 = never prompt
@@ -64,7 +65,8 @@
 # To be asked instead, download first and run it as a file:
 #   curl -fsSLO https://get.miabi.io && sudo bash ./get.miabi.io
 #
-# Install or pin a specific release:
+# By default the newest stable release is installed, with the gateway, runner and CLI it was
+# tested with (from versions.miabi.io). Pin a specific release instead:
 #   curl -fsSL https://get.miabi.io | sudo MIABI_VERSION=v1.4.0 bash
 
 # This script is bash (pipefail, ERR traps, BASH_SOURCE, local). Invoked as
@@ -87,28 +89,66 @@ SKIP_DOCKER_INSTALL="${MIABI_SKIP_DOCKER_INSTALL:-0}"
 
 # ===================== versions ================================
 #
-# The single place every image is pinned. CI bumps these on release (see
-# .github/workflows/release.yml) and they are passed straight to `miabi setup`, so
-# the manifest it writes records exactly what this release was tested against.
-MIABI_VERSION="${MIABI_VERSION:-v1.10.18}"
-GOMA_VERSION="${GOMA_VERSION:-v1.1.1}"
-RUNNER_VERSION="${RUNNER_VERSION:-latest}"
-
-# The miabi CLI is what installs and then manages the stack, and it releases from its own repo
-# (miabi-io/cli) on its own cadence — a standalone CLI can be older or newer than the stack it
-# manages, so it carries its own pin rather than following MIABI_VERSION.
-MIABI_CLI_VERSION="${MIABI_CLI_VERSION:-v0.20.0}"
-
-# Docker tags carry no leading "v" (git tag v1.2.3 → image tag 1.2.3) across all
-# three images. The :latest fallback only applies if a caller deliberately blanks
-# a version (MIABI_VERSION= ), since the defaults above are always set.
+# Versions come from versions.miabi.io: the newest stable Miabi with the gateway and runner it was
+# tested with, and the newest stable CLI, which manages any stack version. Release workflows publish
+# there only after their images are pushed, so the installer never names a tag that cannot be
+# pulled. A version set in the environment wins:
 #
-# miabi/runner versions independently of miabi/miabi (runner 0.0.x while the
-# panel is 1.0.x), so it carries its own version — deriving its tag from
-# MIABI_VERSION would ask for an image that was never published.
-MIABI_IMAGE_TAG="${MIABI_VERSION#v}";   MIABI_IMAGE_TAG="${MIABI_IMAGE_TAG:-latest}"
-GOMA_IMAGE_TAG="${GOMA_VERSION#v}";     GOMA_IMAGE_TAG="${GOMA_IMAGE_TAG:-latest}"
-RUNNER_IMAGE_TAG="${RUNNER_VERSION#v}"; RUNNER_IMAGE_TAG="${RUNNER_IMAGE_TAG:-latest}"
+#   MIABI_VERSION=v1.4.0   pin the control plane (pin GOMA_VERSION with it for a tested pair)
+#   GOMA_VERSION, RUNNER_VERSION, MIABI_CLI_VERSION   pin one component
+#
+# With every version pinned there is no lookup at all (air-gapped installs). A failed lookup stops
+# the install: falling back to :latest would cost automatic rollback and drift detection for good.
+#
+# miabi/runner and the miabi CLI release on their own cadence, so each carries its own version
+# rather than following MIABI_VERSION. Docker tags carry no leading "v" (git tag v1.2.3 → 1.2.3).
+[ "${MIABI_VERSION:-}" = "latest" ] && MIABI_VERSION=""
+VERSIONS_LOOKED_UP=""
+if [ -z "${MIABI_VERSION:-}" ] || [ -z "${GOMA_VERSION:-}" ] || [ -z "${RUNNER_VERSION:-}" ] || [ -z "${MIABI_CLI_VERSION:-}" ]; then
+  VERSIONS_LOOKED_UP=1
+  # One request: the index lists every component. A component's stable entry runs from
+  # "<name>":{"stable":{ up to its prerelease entry, when there is one.
+  _index="$(curl -fsSL --retry 3 --retry-delay 2 --max-time 20 https://versions.miabi.io/v1/index.json | tr -d ' \n\r\t')" || _index=""
+  _stable_of() {
+    case "$_index" in *"\"$1\":{\"stable\":{"*) ;; *) return 0 ;; esac
+    local e="${_index#*\"$1\":\{\"stable\":\{}"
+    printf '%s' "${e%%\"prerelease\":*}"
+  }
+  _version_of() { printf '%s' "$1" | sed -n 's/^"version":"\([^"]*\)".*/\1/p'; }
+  _pick() { printf '%s' "$1" | sed -n "s/.*\"components\":{[^}]*\"$2\":\"\\([^\"]*\\)\".*/\\1/p"; }
+  _miabi="$(_stable_of miabi)"
+  _version="$(_version_of "$_miabi")"
+  _gateway="$(_pick "$_miabi" gateway)"; _runner="$(_pick "$_miabi" runner)"
+  # The CLI's own newest release; the one Miabi was tested with only if the index lacks it.
+  _cli="$(_version_of "$(_stable_of cli)")"; [ -n "$_cli" ] || _cli="$(_pick "$_miabi" cli)"
+  [ -n "${MIABI_VERSION:-}" ] || { [ -z "$_version" ] || MIABI_VERSION="v${_version}"; }
+  [ -n "${GOMA_VERSION:-}" ] || { [ -z "$_gateway" ] || GOMA_VERSION="v${_gateway}"; }
+  [ -n "${RUNNER_VERSION:-}" ] || { [ -z "$_runner" ] || RUNNER_VERSION="v${_runner}"; }
+  [ -n "${MIABI_CLI_VERSION:-}" ] || { [ -z "$_cli" ] || MIABI_CLI_VERSION="v${_cli}"; }
+  unset -f _stable_of _version_of _pick
+  unset _index _miabi _version _gateway _runner _cli
+fi
+for _v in MIABI_VERSION GOMA_VERSION RUNNER_VERSION MIABI_CLI_VERSION; do
+  case "${!_v:-}" in [0-9]*) printf -v "$_v" 'v%s' "${!_v}" ;; esac
+  case "${!_v:-}" in
+    v[0-9]*.[0-9]*.[0-9]*) ;;
+    "")
+      echo "miabi: could not determine ${_v} from versions.miabi.io." >&2
+      echo "       Retry, or pin every version: MIABI_VERSION, GOMA_VERSION, RUNNER_VERSION and" >&2
+      echo "       MIABI_CLI_VERSION (vX.Y.Z; current ones at https://versions.miabi.io/v1/index.json)." >&2
+      exit 1
+      ;;
+    *)
+      echo "miabi: ${_v}='${!_v}' is not a version; use vX.Y.Z." >&2
+      exit 1
+      ;;
+  esac
+done
+unset _v
+
+MIABI_IMAGE_TAG="${MIABI_VERSION#v}"
+GOMA_IMAGE_TAG="${GOMA_VERSION#v}"
+RUNNER_IMAGE_TAG="${RUNNER_VERSION#v}"
 
 
 # How to re-run for an update: a local path when run from a checkout, otherwise
@@ -136,6 +176,8 @@ log()  { printf "${C_DIM}%s${C_RESET} ${C_CYAN}==>${C_RESET} %s\n" "$(_ts)" "$1"
 ok()   { printf "${C_DIM}%s${C_RESET} ${C_GREEN}✓${C_RESET}   %s\n" "$(_ts)" "$1"; }
 warn() { printf "${C_DIM}%s${C_RESET} ${C_YELLOW}!${C_RESET}   %s\n" "$(_ts)" "$1" >&2; }
 die()  { printf "${C_DIM}%s${C_RESET} ${C_RED}✗${C_RESET}   %s\n" "$(_ts)" "$1" >&2; exit 1; }
+
+log "Miabi ${MIABI_VERSION}, gateway ${GOMA_VERSION}, runner ${RUNNER_VERSION}, CLI ${MIABI_CLI_VERSION}${VERSIONS_LOOKED_UP:+ (from versions.miabi.io)}"
 
 on_error() {
   local code=$?
@@ -596,8 +638,8 @@ install_stack() {
   # `uninstall --volumes` and can be backed up like any other config file.
   mkdir -p "$STACK_ETC"
 
-  # --image is passed explicitly rather than left to the CLI's own build stamp: this script pins
-  # every image in one place, and the CLI version and the stack version are now independent.
+  # --image is passed explicitly rather than left to the CLI's own build stamp: the CLI version and
+  # the stack version are independent, and the versions block above decides every image.
   # MIABI_CONFIG_FILE honours MIABI_ETC, which the old bind mount used to do implicitly.
   # shellcheck disable=SC2086
   MIABI_CONFIG_FILE="${STACK_ETC}/miabi.yaml" "${BIN_DIR}/miabi" setup \
