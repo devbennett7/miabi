@@ -83,6 +83,8 @@ type Runner struct {
 	OS      string `json:"os,omitempty"`
 	Arch    string `json:"arch,omitempty"`
 	Version string `json:"version,omitempty"`
+	// LatestVersion is set, transiently, when a newer runner release exists.
+	LatestVersion string `json:"latest_version,omitempty" gorm:"-"`
 	// Features are what the runner reports it can do, such as "multi-platform"; a job that needs one is
 	// scheduled only where it is listed, since an older runner would drop the request without a word.
 	Features []string `json:"features,omitempty" gorm:"serializer:json"`

@@ -103,7 +103,8 @@
       "grace": "Votre licence a expiré et se trouve dans sa période de grâce — renouvelez-la pour ne pas perdre l’accès aux fonctionnalités payantes.",
       "nodeLimit": "Vous avez dépassé votre limite de nœuds sous licence — l’ajout de nœuds est bloqué."
     },
-    "releaseNotes": "Notes de version →"
+    "releaseNotes": "Notes de version →",
+    "securityRelease": "Mise à jour de sécurité"
   },
   "adminNav": {
     "enterprise": {
@@ -3419,7 +3420,8 @@
     "liveHint": "Statuts mis à jour en direct",
     "reconnectingHint": "Reconnexion — les statuts peuvent être en retard",
     "waitingToConnect": "En attente de la connexion du runner…",
-    "connectedOnline": "Runner connecté — il est en ligne."
+    "connectedOnline": "Runner connecté — il est en ligne.",
+    "updateAvailable": "{version} disponible"
   },
   "saveAsSecret": {
     "optional": "(facultatif)",

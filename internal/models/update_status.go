@@ -23,17 +23,21 @@ import "time"
 
 // Components an UpdateStatus row may track.
 const (
-	UpdateComponentMiabi = "miabi"
-	UpdateComponentAgent = "agent"
+	UpdateComponentMiabi   = "miabi"
+	UpdateComponentAgent   = "agent"
+	UpdateComponentRunner  = "runner"
+	UpdateComponentGateway = "gateway"
 )
 
 // UpdateStatus caches the result of a daily release check.
 type UpdateStatus struct {
-	ID               uint       `json:"-" gorm:"primaryKey"`
-	Component        string     `json:"component" gorm:"uniqueIndex;not null;default:miabi"`
-	LatestVersion    string     `json:"latest_version"`
-	ReleaseURL       string     `json:"release_url"`
-	PublishedAt      *time.Time `json:"published_at"`
+	ID            uint       `json:"-" gorm:"primaryKey"`
+	Component     string     `json:"component" gorm:"uniqueIndex;not null;default:miabi"`
+	LatestVersion string     `json:"latest_version"`
+	ReleaseURL    string     `json:"release_url"`
+	PublishedAt   *time.Time `json:"published_at"`
+	// Reason is why the release was published: bugfix, feature, security or other.
+	Reason           string     `json:"reason,omitempty"`
 	ETag             string     `json:"-"`
 	CheckedVersion   string     `json:"-"`
 	CheckedAt        *time.Time `json:"checked_at"`

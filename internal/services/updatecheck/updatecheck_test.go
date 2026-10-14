@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/miabi-io/miabi/internal/models"
 	"gorm.io/driver/sqlite"
@@ -32,78 +33,8 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func rel(tag string, pre bool) Release {
-	return Release{TagName: tag, HTMLURL: "https://example.test/" + tag, Prerelease: pre}
-}
-
-func TestNewestPicksBySemverNotString(t *testing.T) {
-	// The whole point: lexically "v1.0.0-beta.9" > "v1.0.0-beta.10".
-	rs := []Release{rel("v1.0.0-beta.9", true), rel("v1.0.0-beta.10", true)}
-	got, ok := Newest("1.0.0-beta.4", rs)
-	if !ok || got.TagName != "v1.0.0-beta.10" {
-		t.Fatalf("got %q (ok=%v), want v1.0.0-beta.10", got.TagName, ok)
-	}
-}
-
-func TestPrereleaseUserIsOfferedStable(t *testing.T) {
-	// Lexically "v1.0.0-beta.4" > "v1.0.0"; semver says stable wins.
-	rs := []Release{rel("v1.0.0", false)}
-	got, ok := Newest("1.0.0-beta.4", rs)
-	if !ok || got.TagName != "v1.0.0" {
-		t.Fatalf("got %q (ok=%v), want v1.0.0", got.TagName, ok)
-	}
-}
-
-func TestStableUserIsNeverOfferedAPrerelease(t *testing.T) {
-	rs := []Release{rel("v1.1.0-rc.1", true)}
-	if got, ok := Newest("1.0.0", rs); ok {
-		t.Fatalf("stable build offered prerelease %q", got.TagName)
-	}
-	// ...but a newer stable is offered.
-	rs = append(rs, rel("v1.1.0", false))
-	got, ok := Newest("1.0.0", rs)
-	if !ok || got.TagName != "v1.1.0" {
-		t.Fatalf("got %q (ok=%v), want v1.1.0", got.TagName, ok)
-	}
-}
-
-func TestUpToDateAndOlderReleasesIgnored(t *testing.T) {
-	rs := []Release{rel("v1.0.0", false), rel("v0.9.0", false)}
-	if got, ok := Newest("1.0.0", rs); ok {
-		t.Fatalf("same version reported as newer: %q", got.TagName)
-	}
-}
-
-func TestDraftsIgnored(t *testing.T) {
-	r := rel("v2.0.0", false)
-	r.Draft = true
-	if got, ok := Newest("1.0.0", []Release{r}); ok {
-		t.Fatalf("draft offered: %q", got.TagName)
-	}
-}
-
-func TestDevBuildNeverChecks(t *testing.T) {
-	if _, ok := Newest("dev", []Release{rel("v9.9.9", false)}); ok {
-		t.Fatal("dev build was offered an update")
-	}
-	s := NewService(nil, "dev", true)
-	if s.Enabled() {
-		t.Fatal("dev build reports Enabled()")
-	}
-	if s := NewService(nil, "1.0.0", false); s.Enabled() {
-		t.Fatal("disabled service reports Enabled()")
-	}
-}
-
-func TestNormalizeHandlesBakedTagWithoutV(t *testing.T) {
-	if got := normalize("1.0.0-beta.4"); got != "v1.0.0-beta.4" {
-		t.Fatalf("normalize = %q", got)
-	}
-	for _, bad := range []string{"dev", "unknown", "", "a1b2c3d"} {
-		if got := normalize(bad); got != "" {
-			t.Fatalf("normalize(%q) = %q, want empty", bad, got)
-		}
-	}
+func rel(v string) *Release {
+	return &Release{Version: v, ReleaseURL: "https://example.test/" + v, Reason: "bugfix", ReleasedAt: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)}
 }
 
 func testDB(t *testing.T) *gorm.DB {
@@ -119,157 +50,198 @@ func testDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func TestCheckStoresNewerVersion(t *testing.T) {
+// serve answers with idx, honouring If-None-Match against etag, and counts requests.
+func serve(t *testing.T, idx *Index, etag string) (*httptest.Server, *int, *string) {
+	t.Helper()
+	var hits int
+	var sawIfNoneMatch string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Spelled out, not compared against releasesPath: asserting a constant
-		// against itself would pass even if someone "fixed" the path to
-		// /releases/latest, which 404s for a repo whose releases are prereleases.
-		if r.URL.Path != "/repos/miabi-io/miabi/releases" {
-			t.Errorf("path = %q, want /repos/miabi-io/miabi/releases", r.URL.Path)
+		hits++
+		sawIfNoneMatch = r.Header.Get("If-None-Match")
+		if etag != "" && sawIfNoneMatch == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
 		}
-		if got := r.URL.Query().Get("per_page"); got != "20" {
-			t.Errorf("per_page = %q, want 20", got)
+		if etag != "" {
+			w.Header().Set("ETag", etag)
 		}
-		if ua := r.Header.Get("User-Agent"); ua != "miabi/1.0.0-beta.4" {
-			t.Errorf("User-Agent = %q", ua)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(idx)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &hits, &sawIfNoneMatch
+}
+
+func checker(srv *httptest.Server, version string, services ...*Service) *Checker {
+	c := NewChecker(version, services...)
+	c.setURL(srv.URL, version)
+	return c
+}
+
+func TestPickForTheRunningBuild(t *testing.T) {
+	cases := []struct {
+		name, current string
+		ch            Channels
+		want          string
+	}{
+		{"semver, not lexical", "1.0.0-beta.4", Channels{Prerelease: rel("1.0.0-beta.10")}, "1.0.0-beta.10"},
+		{"prerelease user is offered stable", "1.0.0-beta.4", Channels{Stable: rel("1.0.0"), Prerelease: rel("1.1.0-beta.1")}, "1.1.0-beta.1"},
+		{"stable user never offered a prerelease", "1.0.0", Channels{Prerelease: rel("1.1.0-rc.1")}, ""},
+		{"stable user offered newer stable", "1.0.0", Channels{Stable: rel("1.1.0"), Prerelease: rel("1.2.0-rc.1")}, "1.1.0"},
+		{"up to date", "1.1.0", Channels{Stable: rel("1.1.0")}, ""},
+		{"ahead of the index", "1.2.0", Channels{Stable: rel("1.1.0")}, ""},
+		{"prerelease mislabelled as stable", "1.0.0", Channels{Stable: rel("1.1.0-rc.1")}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := NewService(nil, c.current, true).pick(c.ch)
+			if v := got.versionOrEmpty(); v != c.want {
+				t.Errorf("pick = %q, want %q", v, c.want)
+			}
+		})
+	}
+}
+
+// Components this process does not run follow the stable channel only, whatever the index says.
+func TestComponentsFollowStableOnly(t *testing.T) {
+	s := NewComponentService(nil, ComponentRunner, true)
+	if got := s.pick(Channels{Stable: rel("0.2.0"), Prerelease: rel("0.3.0-rc.1")}); got.versionOrEmpty() != "0.2.0" {
+		t.Errorf("runner picked %q, want 0.2.0", got.versionOrEmpty())
+	}
+	if got := s.pick(Channels{Stable: rel("0.3.0-rc.1")}); got != nil {
+		t.Errorf("a prerelease in the stable channel reached a component: %q", got.Version)
+	}
+}
+
+func TestDevBuildNeverChecks(t *testing.T) {
+	if NewService(nil, "dev", true).Enabled() {
+		t.Fatal("dev build reports Enabled()")
+	}
+	if NewService(nil, "1.0.0", false).Enabled() {
+		t.Fatal("disabled service reports Enabled()")
+	}
+}
+
+func TestNormalizeHandlesBakedTagWithoutV(t *testing.T) {
+	if got := normalize("1.0.0-beta.4"); got != "v1.0.0-beta.4" {
+		t.Fatalf("normalize = %q", got)
+	}
+	for _, bad := range []string{"dev", "unknown", "", "a1b2c3d"} {
+		if got := normalize(bad); got != "" {
+			t.Fatalf("normalize(%q) = %q, want empty", bad, got)
 		}
-		if acc := r.Header.Get("Accept"); acc != "application/vnd.github+json" {
-			t.Errorf("Accept = %q", acc)
+	}
+}
+
+// One request fills every component's row, and the request says nothing about the install.
+func TestCheckStoresEveryComponentFromOneRequest(t *testing.T) {
+	miabi := rel("1.11.0")
+	miabi.Reason, miabi.ChangelogURL = ReasonSecurity, "https://docs.example.test/1.11"
+	idx := &Index{Components: map[string]Channels{
+		ComponentMiabi:   {Stable: miabi},
+		ComponentAgent:   {Stable: rel("0.6.2")},
+		ComponentRunner:  {Stable: rel("0.2.0")},
+		ComponentGateway: {Stable: rel("1.1.1")},
+	}}
+	var ua, auth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ua, auth = r.Header.Get("User-Agent"), r.Header.Get("Authorization")
+		if r.URL.RawQuery != "" {
+			t.Errorf("query string sent: %q", r.URL.RawQuery)
 		}
-		// Nothing identifying may leak: no auth, no install id.
-		if r.Header.Get("Authorization") != "" {
-			t.Error("Authorization header sent to GitHub")
-		}
-		w.Header().Set("ETag", `W/"abc"`)
-		_ = json.NewEncoder(w).Encode([]Release{rel("v1.0.0-beta.5", true)})
+		_ = json.NewEncoder(w).Encode(idx)
 	}))
 	defer srv.Close()
 
-	s := NewService(testDB(t), "1.0.0-beta.4", true)
-	s.setBaseURL(srv.URL)
-	if err := s.Check(context.Background()); err != nil {
+	db := testDB(t)
+	mi := NewService(db, "1.10.18", true)
+	ag := NewAgentService(db, true)
+	ru := NewComponentService(db, ComponentRunner, true)
+	gw := NewComponentService(db, ComponentGateway, true)
+	if err := checker(srv, "1.10.18", mi, ag, ru, gw).Check(context.Background()); err != nil {
 		t.Fatalf("check: %v", err)
 	}
-	st, _ := s.Status()
-	if st.LatestVersion != "v1.0.0-beta.5" {
-		t.Fatalf("LatestVersion = %q", st.LatestVersion)
+	if ua != "miabi/1.10.18" || auth != "" {
+		t.Errorf("User-Agent=%q Authorization=%q", ua, auth)
 	}
-	if st.ETag != `W/"abc"` {
-		t.Fatalf("ETag not stored: %q", st.ETag)
+
+	st, _ := mi.Status()
+	if st.LatestVersion != "v1.11.0" || st.Reason != ReasonSecurity || st.ReleaseURL != "https://docs.example.test/1.11" {
+		t.Errorf("miabi row = %+v", st)
 	}
-	if st.CheckedAt == nil || st.LastError != "" {
-		t.Fatalf("CheckedAt=%v LastError=%q", st.CheckedAt, st.LastError)
+	for svc, want := range map[*Service]string{ag: "v0.6.2", ru: "v0.2.0", gw: "v1.1.1"} {
+		if got := svc.LatestVersion(); got != want {
+			t.Errorf("%s latest = %q, want %q", svc.Component(), got, want)
+		}
+	}
+	var n int64
+	db.Model(&models.UpdateStatus{}).Count(&n)
+	if n != 4 {
+		t.Errorf("got %d rows, want one per component", n)
 	}
 }
 
 func TestCheckReplaysETagAndKeepsCacheOn304(t *testing.T) {
-	var sawIfNoneMatch string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sawIfNoneMatch = r.Header.Get("If-None-Match")
-		w.WriteHeader(http.StatusNotModified)
-	}))
-	defer srv.Close()
-
+	idx := &Index{Components: map[string]Channels{ComponentMiabi: {Stable: rel("1.0.1")}}}
+	srv, hits, sawIfNoneMatch := serve(t, idx, `"abc"`)
 	db := testDB(t)
-	s := NewService(db, "1.0.0-beta.4", true)
-	s.setBaseURL(srv.URL)
+	c := checker(srv, "1.0.0", NewService(db, "1.0.0", true), NewAgentService(db, true))
 
-	// Seed a prior result; a 304 must preserve it. CheckedVersion matches the running build, i.e. the verdict
-	// was computed for THIS binary — only then is replaying the ETag sound. (When it does not match, see
-	// TestUpgradedBuildIsNotOfferedTheReleaseItAlreadyPassed.)
-	st, _ := s.Status()
-	st.LatestVersion, st.ETag, st.CheckedVersion = "v1.0.0-beta.5", `W/"abc"`, "1.0.0-beta.4"
-	if err := db.Save(st).Error; err != nil {
+	if err := c.Check(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-
-	if err := s.Check(context.Background()); err != nil {
-		t.Fatalf("check: %v", err)
+	if err := c.Check(context.Background()); err != nil {
+		t.Fatal(err)
 	}
-	if sawIfNoneMatch != `W/"abc"` {
-		t.Fatalf("If-None-Match = %q, want the stored ETag", sawIfNoneMatch)
+	if *hits != 2 || *sawIfNoneMatch != `"abc"` {
+		t.Fatalf("hits=%d If-None-Match=%q, want the stored ETag replayed", *hits, *sawIfNoneMatch)
 	}
-	after, _ := s.Status()
-	if after.LatestVersion != "v1.0.0-beta.5" {
-		t.Fatalf("304 clobbered the cached verdict: %q", after.LatestVersion)
-	}
-	// A 304 is a SUCCESS, not a failure. Without this, treating non-2xx as an
-	// error (e.g. via resp.Error()) still leaves LatestVersion untouched — the
-	// assertion above passes and the regression slips through.
-	if after.LastError != "" {
-		t.Fatalf("304 recorded as an error: %q", after.LastError)
+	st, _ := NewService(db, "1.0.0", true).Status()
+	// A 304 is a success: the verdict survives and no error is recorded.
+	if st.LatestVersion != "v1.0.1" || st.LastError != "" {
+		t.Fatalf("after 304: LatestVersion=%q LastError=%q", st.LatestVersion, st.LastError)
 	}
 }
 
-// The reported bug: "Miabi v1.2.1 is available — you're running 1.3.0." The cached verdict depends on the
-// release list AND the build it was compared against, but the ETag fingerprints only the list — so after an
-// upgrade every check 304s and the old verdict survives permanently, offering a downgrade.
+// "Miabi v1.2.1 is available — you're running 1.3.0." The cached verdict depends on the index AND the build it
+// was compared against, but the ETag fingerprints only the index — so after an upgrade every check would 304
+// and the old verdict would survive permanently, offering a downgrade.
 func TestUpgradedBuildIsNotOfferedTheReleaseItAlreadyPassed(t *testing.T) {
-	var sawIfNoneMatch string
-	var served int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		served++
-		sawIfNoneMatch = r.Header.Get("If-None-Match")
-		// GitHub would answer 304 to the stored ETag. Only reachable if we send it.
-		if sawIfNoneMatch != "" {
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
-		w.Header().Set("ETag", `W/"abc"`)
-		// The list is UNCHANGED — v1.2.1 is still the newest release. Nothing about
-		// GitHub is different; the only thing that moved is the running build.
-		_ = json.NewEncoder(w).Encode([]Release{rel("v1.2.1", false)})
-	}))
-	defer srv.Close()
-
+	idx := &Index{Components: map[string]Channels{ComponentMiabi: {Stable: rel("1.2.1")}}}
+	srv, hits, sawIfNoneMatch := serve(t, idx, `"abc"`)
 	db := testDB(t)
 
-	// The row as the 1.2.0 build left it: correct at the time it was written.
-	s := NewService(db, "1.2.0", true)
-	s.setBaseURL(srv.URL)
-	if err := s.Check(context.Background()); err != nil {
-		t.Fatalf("check as 1.2.0: %v", err)
+	if err := checker(srv, "1.2.0", NewService(db, "1.2.0", true)).Check(context.Background()); err != nil {
+		t.Fatal(err)
 	}
-	if st, _ := s.Status(); st.LatestVersion != "v1.2.1" {
-		t.Fatalf("precondition: LatestVersion = %q, want v1.2.1", st.LatestVersion)
+	if st, _ := NewService(db, "1.2.0", true).Status(); st.LatestVersion != "v1.2.1" {
+		t.Fatalf("precondition: LatestVersion = %q", st.LatestVersion)
 	}
 
-	// Now the operator upgrades the binary to 1.3.0. Same DB, same GitHub.
-	s = NewService(db, "1.3.0", true)
-	s.setBaseURL(srv.URL)
-	if err := s.Check(context.Background()); err != nil {
-		t.Fatalf("check as 1.3.0: %v", err)
+	upgraded := NewService(db, "1.3.0", true)
+	if err := checker(srv, "1.3.0", upgraded).Check(context.Background()); err != nil {
+		t.Fatal(err)
 	}
-
-	if sawIfNoneMatch != "" {
-		t.Errorf("replayed the ETag after the build changed (%q): the 304 would preserve a verdict computed for 1.2.0", sawIfNoneMatch)
+	if *sawIfNoneMatch != "" || *hits != 2 {
+		t.Errorf("replayed the ETag after the build changed (%q, %d hits)", *sawIfNoneMatch, *hits)
 	}
-	if served != 2 {
-		t.Errorf("GitHub hit %d times, want 2", served)
-	}
-	st, _ := s.Status()
-	if st.LatestVersion != "" {
-		t.Errorf("LatestVersion = %q; 1.3.0 is newer than every release, so there is no update to offer", st.LatestVersion)
-	}
-	if st.CheckedVersion != "1.3.0" {
-		t.Errorf("CheckedVersion = %q, want 1.3.0 — the verdict must record the build it was computed for", st.CheckedVersion)
+	st, _ := upgraded.Status()
+	if st.LatestVersion != "" || st.CheckedVersion != "1.3.0" {
+		t.Errorf("LatestVersion=%q CheckedVersion=%q; 1.3.0 is newer than the index", st.LatestVersion, st.CheckedVersion)
 	}
 }
 
-// Even with a correct cache, the row is only rewritten by a daily cron: between an
-// upgrade and the next tick it still describes the previous build. Readers must
-// compare, so the notice can never propose a downgrade whatever is cached.
 func TestIsNewerRejectsOlderAndEqual(t *testing.T) {
 	cases := []struct {
 		current, latest string
 		want            bool
 	}{
-		{"1.3.0", "v1.2.1", false}, // the reported bug, at the read path
-		{"1.3.0", "v1.3.0", false}, // up to date
+		{"1.3.0", "v1.2.1", false},
+		{"1.3.0", "v1.3.0", false},
 		{"1.3.0", "v1.3.1", true},
-		{"1.3.0", "v1.10.0", true},               // semver, not lexical: 10 > 3
-		{"1.0.0-beta.9", "v1.0.0-beta.10", true}, // ditto, in the prerelease field
-		{"dev", "v1.3.0", false},                 // a non-version build compares against nothing
+		{"1.3.0", "v1.10.0", true},
+		{"1.0.0-beta.9", "v1.0.0-beta.10", true},
+		{"dev", "v1.3.0", false},
 		{"1.3.0", "", false},
 	}
 	for _, c := range cases {
@@ -280,45 +252,50 @@ func TestIsNewerRejectsOlderAndEqual(t *testing.T) {
 }
 
 func TestCheckClearsStalePointerWhenUpToDate(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode([]Release{rel("v1.0.0", false)})
-	}))
-	defer srv.Close()
-
+	srv, _, _ := serve(t, &Index{Components: map[string]Channels{ComponentMiabi: {Stable: rel("1.0.0")}}}, "")
 	db := testDB(t)
 	s := NewService(db, "1.0.0", true)
-	s.setBaseURL(srv.URL)
 	st, _ := s.Status()
-	st.LatestVersion, st.ReleaseURL = "v0.9.0", "https://old"
+	st.LatestVersion, st.ReleaseURL, st.Reason = "v0.9.0", "https://old", ReasonSecurity
 	_ = db.Save(st).Error
 
-	if err := s.Check(context.Background()); err != nil {
-		t.Fatalf("check: %v", err)
+	if err := checker(srv, "1.0.0", s).Check(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 	after, _ := s.Status()
-	if after.LatestVersion != "" || after.ReleaseURL != "" {
-		t.Fatalf("stale pointer kept: %q %q", after.LatestVersion, after.ReleaseURL)
+	if after.LatestVersion != "" || after.ReleaseURL != "" || after.Reason != "" {
+		t.Fatalf("stale pointer kept: %+v", after)
 	}
 }
 
 func TestCheckRecordsErrorWithoutFailing(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden) // rate limited
+		w.WriteHeader(http.StatusBadGateway)
 	}))
 	defer srv.Close()
-
-	s := NewService(testDB(t), "1.0.0", true)
-	s.setBaseURL(srv.URL)
-	// An air-gapped or rate-limited host must not turn cron red every day.
-	if err := s.Check(context.Background()); err != nil {
+	db := testDB(t)
+	mi, ag := NewService(db, "1.0.0", true), NewAgentService(db, true)
+	// An air-gapped host must not turn cron red every day.
+	if err := checker(srv, "1.0.0", mi, ag).Check(context.Background()); err != nil {
 		t.Fatalf("Check returned an error to cron: %v", err)
 	}
-	st, _ := s.Status()
-	if st.LastError == "" {
-		t.Fatal("failure not recorded on the row")
+	for _, s := range []*Service{mi, ag} {
+		st, _ := s.Status()
+		if st.LastError == "" || st.CheckedAt == nil {
+			t.Errorf("%s: failure not recorded: %+v", s.Component(), st)
+		}
 	}
-	if st.CheckedAt == nil {
-		t.Fatal("CheckedAt not stamped on a failed check")
+}
+
+func TestDisabledCheckerFetchesNothing(t *testing.T) {
+	srv, hits, _ := serve(t, &Index{}, "")
+	db := testDB(t)
+	c := checker(srv, "1.0.0", NewService(db, "1.0.0", false), NewAgentService(db, false))
+	if c.Enabled() {
+		t.Fatal("checker enabled with every component off")
+	}
+	if err := c.Check(context.Background()); err != nil || *hits != 0 {
+		t.Fatalf("err=%v hits=%d, want no request", err, *hits)
 	}
 }
 

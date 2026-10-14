@@ -62,6 +62,9 @@ func (h *AdminRunnerHandler) overCreateLimit() bool {
 // runners' Connected flag (nil-safe).
 func (h *AdminRunnerHandler) SetConnRegistry(c RunnerConnRegistry) { h.base.SetConnRegistry(c) }
 
+// SetRunnerReleases wires the newest known runner release (nil-safe).
+func (h *AdminRunnerHandler) SetRunnerReleases(r AgentReleases) { h.base.SetRunnerReleases(r) }
+
 // List returns the shared runner pool.
 func (h *AdminRunnerHandler) List(c *okapi.Context) error {
 	runners, err := h.svc.ListShared()

@@ -42,11 +42,13 @@ type UpdateInfo struct {
 	PublishedAt    *time.Time `json:"published_at,omitempty"`
 	// UpdateAvailable is false when up to date, when checks are disabled, and
 	// when the admin dismissed this exact version.
-	UpdateAvailable bool       `json:"update_available"`
-	Enabled         bool       `json:"enabled"`
-	CheckedAt       *time.Time `json:"checked_at,omitempty"`
+	UpdateAvailable bool `json:"update_available"`
+	// Security marks a release published to fix a vulnerability; the notice is shown prominently.
+	Security  bool       `json:"security"`
+	Enabled   bool       `json:"enabled"`
+	CheckedAt *time.Time `json:"checked_at,omitempty"`
 	// LastError surfaces a silently failing checker; an admin should never mistake
-	// "we could not reach GitHub for a month" for "you are up to date".
+	// "we could not reach versions.miabi.io for a month" for "you are up to date".
 	LastError string `json:"last_error,omitempty"`
 }
 
@@ -71,6 +73,7 @@ func (h *UpdateHandler) Get(c *okapi.Context) error {
 		info.LatestVersion = st.LatestVersion
 		info.ReleaseURL = st.ReleaseURL
 		info.PublishedAt = st.PublishedAt
+		info.Security = st.Reason == updatecheck.ReasonSecurity
 		info.UpdateAvailable = h.svc.Enabled() && st.DismissedVersion != st.LatestVersion
 	}
 	return ok(c, info)

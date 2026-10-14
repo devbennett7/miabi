@@ -23,7 +23,7 @@ import (
 	"github.com/miabi-io/miabi/internal/services/telemetry"
 )
 
-// TelemetryHandler shows admins exactly what the anonymous telemetry event contains.
+// TelemetryHandler reports whether anonymous telemetry is on.
 type TelemetryHandler struct {
 	svc *telemetry.Service
 }
@@ -32,17 +32,11 @@ func NewTelemetryHandler(svc *telemetry.Service) *TelemetryHandler {
 	return &TelemetryHandler{svc: svc}
 }
 
-// TelemetryPreview is the event as it would be sent, and whether it is sent at all.
-type TelemetryPreview struct {
-	Enabled bool              `json:"enabled"`
-	URL     string            `json:"url"`
-	Payload telemetry.Payload `json:"payload"`
+// TelemetryStatus says whether the startup and daily events are sent.
+type TelemetryStatus struct {
+	Enabled bool `json:"enabled"`
 }
 
-func (h *TelemetryHandler) Preview(c *okapi.Context) error {
-	return ok(c, TelemetryPreview{
-		Enabled: h.svc.Enabled(),
-		URL:     h.svc.URL(),
-		Payload: h.svc.Payload(telemetry.EventDaily),
-	})
+func (h *TelemetryHandler) Status(c *okapi.Context) error {
+	return ok(c, TelemetryStatus{Enabled: h.svc.Enabled()})
 }
