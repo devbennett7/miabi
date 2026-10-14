@@ -132,22 +132,44 @@ jobs:
 
   publish-version:
     runs-on: ubuntu-latest
-    # After the images: versions.miabi.io must never point at a tag nobody can pull.
     needs: [release, image]
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Verify every published image exists
+        run: |
+          set -euo pipefail
+          # GOMA_VERSION may come from a repository variable, so validate rather than trust it.
+          case "${GOMA_VERSION}" in
+            v[0-9]*) ;;
+            *) echo "::error::GOMA_VERSION must look like v1.2.3, got '${GOMA_VERSION}'"; exit 1 ;;
+          esac
+          # Query the registry itself; a manifest can lag a few seconds behind the push.
+          assert_image() {
+            for attempt in 1 2 3 4 5; do
+              if docker buildx imagetools inspect "$1" >/dev/null 2>&1; then
+                echo "  ok $1"; return 0
+              fi
+              echo "  waiting for $1 (attempt ${attempt}/5)"; sleep 10
+            done
+            echo "::error::$1 was never published; refusing to advertise it on versions.miabi.io"
+            exit 1
+          }
+          assert_image "miabi/miabi:${GITHUB_REF_NAME#v}"
+          assert_image "jkaninda/goma-gateway:${GOMA_VERSION#v}"
 
       - name: Tested component versions
         id: bundle
         run: |
           set -euo pipefail
-          # Agent and runner follow :latest, so this release was tested with the stable ones live now.
+          # Agent, runner and CLI release on their own cadence, so this release was tested with the
+          # stable ones live now.
           index="$(curl -fsSL https://versions.miabi.io/v1/index.json)"
           agent="$(jq -er '.components.agent.stable.version' <<<"$index")"
           runner="$(jq -er '.components.runner.stable.version' <<<"$index")"
-          cli="$(grep -oP '^MIABI_CLI_VERSION="\$\{MIABI_CLI_VERSION:-v\K[^}]+' deploy/install.sh)"
+          cli="$(jq -er '.components.cli.stable.version' <<<"$index")"
           echo "components=gateway=${GOMA_VERSION#v},agent=${agent},runner=${runner},cli=${cli}" >> "$GITHUB_OUTPUT"
 
       - uses: miabi-io/versions@main
@@ -157,126 +179,3 @@ jobs:
           components: ${{ steps.bundle.outputs.components }}
           also: gateway=${{ env.GOMA_VERSION }}
           token: ${{ secrets.VERSIONS_TOKEN }}
-
-  # Bump deploy/install.sh on main, via a pull request.
-  bump-installer:
-    runs-on: ubuntu-latest
-    # Wait for the images. This PR is what tells main to install them, and main must
-    # never advertise a version nobody can pull
-    needs: [release, image]
-    permissions:
-      contents: write # push the bump branch
-      # No pull-requests: write. The org forbids Actions from opening PRs, and the repo
-      # cannot override an org policy — so the job pushes the branch and a maintainer
-      # opens the PR from the link in the job summary.
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: main # bump main, not the tag — the tag is already cut
-          fetch-depth: 0
-
-      - uses: docker/setup-buildx-action@v4
-
-      - name: Verify every pinned image exists
-        run: |
-          set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"   # docker tags drop the leading "v"
-
-          # GOMA_VERSION may come from a repository variable, so validate
-          # rather than trust: a typo would open a PR pinning an image nobody published.
-          for v in GOMA_VERSION; do
-            case "${!v}" in
-              v[0-9]*) ;;
-              *) echo "::error::$v must look like v1.2.3, got '${!v}'"; exit 1 ;;
-            esac
-          done
-
-          # Query the registry itself rather than Docker Hub's web API. Retry: a
-          # manifest can lag a few seconds behind the push.
-          assert_image() { # <ref>
-            for attempt in 1 2 3 4 5; do
-              if docker buildx imagetools inspect "$1" >/dev/null 2>&1; then
-                echo "  ok $1"; return 0
-              fi
-              echo "  waiting for $1 (attempt ${attempt}/5)"; sleep 10
-            done
-            echo "::error::$1 was never published — refusing to bump main to a version that cannot be installed"
-            exit 1
-          }
-          assert_image "miabi/miabi:${VERSION}"
-          assert_image "jkaninda/goma-gateway:${GOMA_VERSION#v}"
-
-      - name: Bump the pinned versions
-        id: bump
-        run: |
-          set -euo pipefail
-
-          sed -i \
-            -e "s|^MIABI_VERSION=.*|MIABI_VERSION=\"\${MIABI_VERSION:-${GITHUB_REF_NAME}}\"|" \
-            -e "s|^GOMA_VERSION=.*|GOMA_VERSION=\"\${GOMA_VERSION:-${GOMA_VERSION}}\"|" \
-            deploy/install.sh
-
-          # miabi/runner and miabi/agent follow :latest, so install.sh's RUNNER_VERSION
-          # and install-agent.sh are deliberately left alone.
-
-          # Fail loudly rather than opening a PR that still says :latest.
-          # -F (fixed string): the pattern contains `${...}`, and a `$` mid-regex is an
-          # anchor in BSD grep, so a plain -q silently never matches.
-          grep -qF "MIABI_VERSION=\"\${MIABI_VERSION:-${GITHUB_REF_NAME}}\"" deploy/install.sh
-          grep -qF "GOMA_VERSION=\"\${GOMA_VERSION:-${GOMA_VERSION}}\"" deploy/install.sh
-          bash -n deploy/install.sh
-
-          if git diff --quiet -- deploy/install.sh; then
-            echo "::notice::main already pins ${GITHUB_REF_NAME} — nothing to bump."
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            git --no-pager diff --stat -- deploy/install.sh
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Push the bump branch
-        if: steps.bump.outputs.changed == 'true'
-        run: |
-          set -euo pipefail
-          BRANCH="release/${GITHUB_REF_NAME}"
-          VERSION="${GITHUB_REF_NAME#v}"
-
-          git config user.name  "akili-agent"
-          git config user.email "agent@goakili.dev"
-
-          # -B and --force so re-running the workflow overwrites the branch instead of
-          # failing on one that already exists. --force-with-lease is the usual reflex,
-          # but on the *first* run there is no remote-tracking ref to lease against and
-          # it aborts with "stale info". The branch is workflow-owned (nobody else
-          # pushes to release/*), so a plain force is the safe one here.
-          git checkout -B "$BRANCH"
-          git add deploy/install.sh
-          git commit -m "chore(release): pin the installer to ${GITHUB_REF_NAME}"
-          git push --force origin "$BRANCH"
-
-          # The workflow deliberately does NOT open the PR. The miabi-io org forbids
-          # GitHub Actions from creating pull requests, and the repo cannot override an
-          # org policy — so `gh pr create` could only ever fail here, and failing would
-          # paint an otherwise good release run red. A maintainer opens it from the link
-          # below; merging it is what makes this release the default install.
-          {
-            echo "### Installer bump ready for ${GITHUB_REF_NAME}"
-            echo
-            echo "\`deploy/install.sh\` is pinned on \`${BRANCH}\`. Open the PR to make it live:"
-            echo
-            echo "**https://github.com/${GITHUB_REPOSITORY}/compare/main...${BRANCH}?expand=1**"
-            echo
-            echo "| Image | Tag |"
-            echo "|---|---|"
-            echo "| \`miabi/miabi\` | \`${VERSION}\` |"
-            echo "| \`jkaninda/goma-gateway\` | \`${GOMA_VERSION#v}\` |"
-            echo
-            echo "Every image above was confirmed published before this branch was pushed."
-            echo "\`get.miabi.io\` serves \`deploy/install.sh\` from **main**, so until the PR is"
-            echo "merged main keeps pinning the previous release — deliberately: the installer"
-            echo "must never advertise a version before its images exist."
-            echo
-            echo "\`deploy/install-agent.sh\` is not touched; the agent releases from its own repo."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          echo "::notice::Pushed ${BRANCH}. Open the PR from the job summary."
