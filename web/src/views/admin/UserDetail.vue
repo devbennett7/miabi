@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useLicenseStore } from '@/stores/license'
 import type { AdminUserDetail, AdminEvent } from '@/api/types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import { copyText } from '@/utils/clipboard'
+import GeneratedPasswordModal from '@/components/GeneratedPasswordModal.vue'
 import AppModal from '@/components/AppModal.vue'
 
 const route = useRoute()
@@ -207,7 +207,6 @@ function disableTwoFactor() {
 // the admin can hand it to the user. Irreversible — the old password is discarded
 // and every session is signed out.
 const generatedPassword = ref<string | null>(null)
-const pwCopied = ref(false)
 function resetPassword() {
   if (!user.value) return
   const id = user.value.id
@@ -221,7 +220,6 @@ function resetPassword() {
       busy.value = true
       try {
         const res = await adminApi.resetUserPassword(id)
-        pwCopied.value = false
         generatedPassword.value = res.data.data?.password ?? null
         notify.success('Password reset')
       } catch (e) {
@@ -230,12 +228,6 @@ function resetPassword() {
         busy.value = false
       }
     },
-  }
-}
-async function copyGeneratedPassword() {
-  if (generatedPassword.value && (await copyText(generatedPassword.value))) {
-    pwCopied.value = true
-    notify.success('Password copied')
   }
 }
 
@@ -742,51 +734,13 @@ function eventSeverity(e: AdminEvent): string {
       @cancel="confirmAction = null"
     />
 
-    <!-- New password: shown exactly once. The admin must copy it now and hand it
-         over out-of-band — it is not stored in clear and can't be shown again. -->
-    <AppModal v-if="generatedPassword" @close="generatedPassword = null">
-      <div class="modal-header">
-        <h2>New password</h2>
-        <button class="btn-icon" aria-label="Close" @click="generatedPassword = null"><span class="mdi mdi-close"></span></button>
-      </div>
-      <div class="modal-body">
-        <p class="text-muted" style="margin-top: 0">
-          A new password has been generated and every session was signed out. Copy it now and share
-          it with the user through a secure channel — <strong>it won't be shown again</strong>.
-        </p>
-        <div class="pw-reveal">
-          <code class="pw-value">{{ generatedPassword }}</code>
-          <button class="btn btn-secondary btn-sm" @click="copyGeneratedPassword">
-            <span class="mdi" :class="pwCopied ? 'mdi-check' : 'mdi-content-copy'"></span>
-            {{ pwCopied ? 'Copied' : 'Copy' }}
-          </button>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-primary btn-sm" @click="generatedPassword = null">Done</button>
-      </div>
-    </AppModal>
+    <GeneratedPasswordModal v-if="generatedPassword" title="New password" :password="generatedPassword" @close="generatedPassword = null">
+      A new password has been generated and every session was signed out.
+    </GeneratedPasswordModal>
   </div>
 </template>
 
 <style scoped>
-.pw-reveal {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  background: var(--surface-2, rgba(127, 127, 127, 0.06));
-}
-.pw-value {
-  flex: 1;
-  font-family: var(--font-mono, monospace);
-  font-size: 15px;
-  letter-spacing: 0.5px;
-  user-select: all;
-  word-break: break-all;
-}
 .del-banner {
   display: flex;
   align-items: center;

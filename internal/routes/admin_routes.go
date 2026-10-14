@@ -86,8 +86,9 @@ func (r *Router) adminRoutes() []okapi.RouteDefinition {
 			Group:       g,
 			Middlewares: admin,
 			Handler:     okapi.H(r.h.adminUser.Create),
-			Summary:     "Create a user",
+			Summary:     "Create a user (password omitted: one is generated and returned once)",
 			Request:     &handlers.AdminCreateUserRequest{},
+			Response:    &dto.Response[handlers.AdminCreateUserResponse]{},
 		},
 		{
 			Method:      http.MethodGet,

@@ -912,7 +912,7 @@
     "verifiedOnlyHint": "Only verified domains with a connected DNS provider can be issued."
   },
   "changePassword": {
-    "atLeast8Characters": "At least 8 characters",
+    "atLeastCharacters": "At least {n} characters",
     "passwordsDonTMatch": "Passwords don't match.",
     "reEnterYourNewPassword": "Re-enter your new password",
     "setANewPassword": "Set a new password",
@@ -3251,7 +3251,7 @@
     "usernameOrEmail": "Username or email"
   },
   "resetPassword": {
-    "atLeast8Characters": "At least 8 characters",
+    "atLeastCharacters": "At least {n} characters",
     "confirmPassword": "Confirm password",
     "continueToSignIn": "Continue to sign in",
     "doneTitle": "Password updated",
@@ -3502,7 +3502,7 @@
     "manualKey": "Can't scan? Enter this key manually: {key}",
     "newPassword": "New password",
     "password": "Password",
-    "passwordHint": "At least 8 characters.",
+    "passwordHint": "At least {n} characters.",
     "passwordSubtitle": "Change the password you use to sign in to Miabi.",
     "recoveryCodesHint": "Each code works once if you lose access to your authenticator. They won't be shown again.",
     "regenerateHint": "Regenerate a fresh set so you don't get locked out.",

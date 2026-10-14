@@ -912,7 +912,7 @@
     "verifiedOnlyHint": "Seuls les domaines vérifiés ayant un fournisseur DNS connecté peuvent être émis."
   },
   "changePassword": {
-    "atLeast8Characters": "Au moins 8 caractères",
+    "atLeastCharacters": "Au moins {n} caractères",
     "passwordsDonTMatch": "Les mots de passe ne correspondent pas.",
     "reEnterYourNewPassword": "Ressaisissez votre nouveau mot de passe",
     "setANewPassword": "Définir un nouveau mot de passe",
@@ -3251,7 +3251,7 @@
     "usernameOrEmail": "Nom d’utilisateur ou e-mail"
   },
   "resetPassword": {
-    "atLeast8Characters": "Au moins 8 caractères",
+    "atLeastCharacters": "Au moins {n} caractères",
     "confirmPassword": "Confirmer le mot de passe",
     "continueToSignIn": "Continuer vers la connexion",
     "doneTitle": "Mot de passe mis à jour",
@@ -3502,7 +3502,7 @@
     "manualKey": "Impossible de scanner ? Saisissez cette clé manuellement : {key}",
     "newPassword": "Nouveau mot de passe",
     "password": "Mot de passe",
-    "passwordHint": "Au moins 8 caractères.",
+    "passwordHint": "Au moins {n} caractères.",
     "passwordSubtitle": "Modifiez le mot de passe que vous utilisez pour vous connecter à Miabi.",
     "recoveryCodesHint": "Chaque code fonctionne une seule fois si vous perdez l’accès à votre application d’authentification. Ils ne seront plus affichés.",
     "regenerateHint": "Régénérez-en un nouveau lot pour ne pas vous retrouver bloqué.",

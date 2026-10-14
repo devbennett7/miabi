@@ -41,13 +41,11 @@ import (
 )
 
 var (
-	ErrNoUser       = errors.New("no user with that email")
-	ErrNotAdmin     = errors.New("user is not a platform admin")
-	ErrWeakPassword = errors.New("password must be at least 8 characters")
+	ErrNoUser   = errors.New("no user with that email")
+	ErrNotAdmin = errors.New("user is not a platform admin")
+	// ErrWeakPassword is models.ErrPasswordTooShort, the console's own rule.
+	ErrWeakPassword = models.ErrPasswordTooShort
 )
-
-// minPasswordLength matches the console's own password rule.
-const minPasswordLength = 8
 
 // Notifier tells the platform admins about a recovery. Satisfied by *alerting.AdminNotifier.
 type Notifier interface {
@@ -145,8 +143,8 @@ func (s *Service) ResetPassword(ctx context.Context, u *models.User, password st
 		if password, err = generatePassword(); err != nil {
 			return Result{}, err
 		}
-	} else if len(password) < minPasswordLength {
-		return Result{}, ErrWeakPassword
+	} else if err := models.CheckNewPassword(password); err != nil {
+		return Result{}, err
 	}
 	if err := s.setPassword(u, password, generated); err != nil {
 		return Result{}, err

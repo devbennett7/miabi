@@ -46,7 +46,8 @@ export interface CreateUserPayload {
   // Optional unique handle; auto-derived from the email local-part when omitted.
   username?: string
   email: string
-  password: string
+  /** Omitted, the server generates a temporary password and returns it once. */
+  password?: string
   role: 'admin' | 'user'
   // notify emails the new user a welcome with a sign-in link (needs system SMTP).
   notify?: boolean
@@ -201,7 +202,7 @@ export const adminApi = {
     }),
   getUser: (id: number) => api.get<ApiResponse<AdminUserDetail>>(`/admin/users/${id}`),
   createUser: (payload: CreateUserPayload) =>
-    api.post<ApiResponse<AdminUser>>('/admin/users', payload),
+    api.post<ApiResponse<AdminUser & { password?: string }>>('/admin/users', payload),
   updateUser: (id: number, payload: UpdateUserPayload) =>
     api.put<ApiResponse<AdminUser>>(`/admin/users/${id}`, payload),
   // Enterprise per-user override of how many workspaces the user may own

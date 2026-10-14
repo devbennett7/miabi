@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import { MIN_PASSWORD_LENGTH } from '@/constants/password'
 import { computed, onMounted, ref } from 'vue'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
@@ -36,7 +37,7 @@ onMounted(async () => {
 const pw = ref({ current: '', next: '', confirm: '' })
 const pwBusy = ref(false)
 const pwError = computed(() => {
-  if (pw.value.next && pw.value.next.length < 8) return 'New password must be at least 8 characters.'
+  if (pw.value.next && pw.value.next.length < MIN_PASSWORD_LENGTH) return `New password must be at least ${MIN_PASSWORD_LENGTH} characters.`
   if (pw.value.confirm && pw.value.next !== pw.value.confirm) return 'New passwords do not match.'
   return ''
 })
@@ -171,8 +172,8 @@ function downloadCodes() {
           </div>
           <div class="form-group">
             <label class="form-label">{{ $t('security.newPassword') }}</label>
-            <input v-model="pw.next" type="password" class="form-input" autocomplete="new-password" minlength="8" :aria-label="$t('security.newPassword')" required />
-            <p class="form-hint">{{ $t('security.passwordHint') }}</p>
+            <input v-model="pw.next" type="password" class="form-input" autocomplete="new-password" :minlength="MIN_PASSWORD_LENGTH" :aria-label="$t('security.newPassword')" required />
+            <p class="form-hint">{{ $t('security.passwordHint', { n: MIN_PASSWORD_LENGTH }) }}</p>
           </div>
           <div class="form-group">
             <label class="form-label">{{ $t('security.confirmNewPassword') }}</label>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { MIN_PASSWORD_LENGTH } from '@/constants/password'
 import { useRouter } from 'vue-router'
 import { apiErrorMessage } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
@@ -15,7 +16,7 @@ const error = ref('')
 const loading = ref(false)
 const nextInput = ref<HTMLInputElement | null>(null)
 
-const MIN_LEN = 8
+const MIN_LEN = MIN_PASSWORD_LENGTH
 const tooShort = computed(() => next.value.length > 0 && next.value.length < MIN_LEN)
 const mismatch = computed(() => confirm.value.length > 0 && confirm.value !== next.value)
 const canSubmit = computed(() => next.value.length >= MIN_LEN && next.value === confirm.value)
@@ -64,7 +65,7 @@ function signOut() {
             v-model="next"
             :type="showPassword ? 'text' : 'password'"
             class="form-input"
-            :placeholder="$t('changePassword.atLeast8Characters')"
+            :placeholder="$t('changePassword.atLeastCharacters', { n: MIN_LEN })"
             autocomplete="new-password"
             :aria-label="$t('security.newPassword')"
             :disabled="loading"

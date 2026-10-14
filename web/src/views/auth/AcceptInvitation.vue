@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { MIN_PASSWORD_LENGTH } from '@/constants/password'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { authApi } from '@/api/auth'
@@ -35,7 +36,7 @@ const name = ref('')
 const password = ref('')
 
 // Matches handlers.MinRegistrationPasswordLen.
-const MIN_PASSWORD = 12
+const MIN_PASSWORD = MIN_PASSWORD_LENGTH
 
 const signedInAsInvitee = computed(
   () => !!auth.user && !!preview.value && auth.user.email.toLowerCase() === preview.value.email.toLowerCase(),

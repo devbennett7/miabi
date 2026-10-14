@@ -30,6 +30,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -103,6 +104,9 @@ func NewService(users *repositories.UserRepository, resets *repositories.Passwor
 // username handle — an '@' selects the email lookup, otherwise the username — and a miss on the primary
 // lookup falls back to the other, so an unusual-looking username still resolves.
 func (s *Service) Authenticate(identifier, password string) (*models.User, error) {
+	if utf8.RuneCountInString(password) < models.MinLoginPasswordLength {
+		return nil, ErrInvalidCredentials
+	}
 	user, err := s.lookupByIdentifier(identifier)
 	if err != nil {
 		return nil, ErrInvalidCredentials
@@ -236,6 +240,9 @@ func (s *Service) ConfirmEmailVerification(rawToken string) (*models.User, error
 
 // ResetPassword consumes a reset token, sets a new password and returns the user's id.
 func (s *Service) ResetPassword(rawToken, newPassword string) (uint, error) {
+	if err := models.CheckNewPassword(newPassword); err != nil {
+		return 0, err
+	}
 	rec, err := s.resets.FindValidByHash(hashToken(rawToken))
 	if err != nil {
 		return 0, ErrInvalidToken
@@ -260,6 +267,9 @@ func (s *Service) ResetPassword(rawToken, newPassword string) (uint, error) {
 // token-based ResetPassword: this is the self-service path from the security page, gated by the current
 // password rather than an emailed token.
 func (s *Service) ChangePassword(userID uint, currentPassword, newPassword string) error {
+	if err := models.CheckNewPassword(newPassword); err != nil {
+		return err
+	}
 	user, err := s.users.FindByID(userID)
 	if err != nil {
 		return ErrInvalidCredentials
@@ -287,6 +297,10 @@ func (s *Service) CreateResetSession(ctx context.Context, userID uint) (string, 
 // password, clears the must-change flag, and returns the user so the caller can
 // issue a full session. Errors when the token is invalid, expired, or already used.
 func (s *Service) CompletePasswordReset(ctx context.Context, token, newPassword string) (*models.User, error) {
+	// Checked before the token is consumed: a rejected password must not burn the single-use session.
+	if err := models.CheckNewPassword(newPassword); err != nil {
+		return nil, err
+	}
 	userID, err := s.store.ConsumeResetSession(ctx, token)
 	if err != nil {
 		return nil, err
