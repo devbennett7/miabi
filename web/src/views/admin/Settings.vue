@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { adminApi } from '@/api/admin'
 import type { SettingInput } from '@/api/admin'
 import type { AuthAccessStatus, NetworkingInfo, PlatformSetting, TelemetryStatus } from '@/api/types'
@@ -29,6 +29,8 @@ async function loadAuthAccess() {
 
 const loading = ref(false)
 const saving = ref(false)
+const saveFailed = ref(false)
+const AUTOSAVE_DELAY_MS = 700
 
 // Read-only encryption posture (per-workspace keys + auto-rotation + gateway config encryption).
 const encryption = ref<{ encryption_enabled: boolean; per_workspace_keys: boolean; auto_rotate: boolean; rotate_months: number; gateway_config_encryption: boolean } | null>(null)
@@ -148,13 +150,28 @@ function sectionDirty(sectionKeys: string[]): boolean {
   return sectionKeys.some((k) => values.value[k] !== original.value[k])
 }
 
-function applySettings(settings: PlatformSetting[]) {
+// A half-typed number ("" or "-") is held back rather than saved, since the server
+// treats an empty limit as "use the default".
+function savable(key: string): boolean {
+  if (READONLY_KEYS.has(key) || pinned.value.has(key)) return false
+  if (values.value[key] === original.value[key]) return false
+  return types.value[key] !== 'int' || /^-?\d+$/.test(values.value[key].trim())
+}
+
+// keepEdits holds the values sent with a save: a key edited again since then keeps
+// its local value instead of being overwritten by the server's response.
+function applySettings(settings: PlatformSetting[], keepEdits?: Record<string, string>) {
   const nextValues: Record<string, string> = {}
+  const nextOriginal: Record<string, string> = {}
   const nextTypes: Record<string, PlatformSetting['type']> = {}
   const nextKeys: string[] = []
   const nextPinned = new Set<string>()
   for (const s of settings) {
-    nextValues[s.key] = s.value ?? ''
+    const server = s.value ?? ''
+    const local = values.value[s.key]
+    const editedSince = keepEdits && local !== undefined && local !== (keepEdits[s.key] ?? original.value[s.key])
+    nextOriginal[s.key] = server
+    nextValues[s.key] = editedSince ? local : server
     nextTypes[s.key] = s.type
     nextKeys.push(s.key)
     if (s.pinned) nextPinned.add(s.key)
@@ -162,7 +179,7 @@ function applySettings(settings: PlatformSetting[]) {
   pinned.value = nextPinned
   values.value = nextValues
   types.value = nextTypes
-  original.value = { ...nextValues }
+  original.value = nextOriginal
   keys.value = nextKeys
 }
 
@@ -186,25 +203,49 @@ onMounted(() => {
   loadAuthAccess()
 })
 
+let saveTimer: ReturnType<typeof setTimeout> | undefined
+
+function scheduleSave() {
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(save, AUTOSAVE_DELAY_MS)
+}
+
+watch(values, scheduleSave, { deep: true })
+
+onBeforeUnmount(() => {
+  clearTimeout(saveTimer)
+  save()
+})
+
 async function save() {
-  if (!dirty.value || saving.value) return
+  if (saving.value) return
+  const changed = keys.value.filter(savable)
+  if (!changed.length) return
   saving.value = true
+  const sent = Object.fromEntries(changed.map((key) => [key, values.value[key]]))
   try {
-    const payload: SettingInput[] = keys.value
-      .filter((key) => !READONLY_KEYS.has(key))
-      .map((key) => ({
-        key,
-        value: values.value[key] ?? '',
-        type: types.value[key] ?? 'string',
-      }))
+    const payload: SettingInput[] = changed.map((key) => ({
+      key,
+      value: sent[key],
+      type: types.value[key] ?? 'string',
+    }))
     const res = await adminApi.updateSettings(payload)
-    applySettings(res.data.data ?? [])
+    applySettings(res.data.data ?? [], sent)
+    saveFailed.value = false
     notify.success('Settings saved')
   } catch (e) {
+    saveFailed.value = true
     notify.apiError(e)
+    return
   } finally {
     saving.value = false
   }
+  if (keys.value.some(savable)) scheduleSave()
+}
+
+// v-model on a number input writes a number; the API takes every value as a string.
+function setValue(key: string, e: Event) {
+  values.value[key] = (e.target as HTMLInputElement).value
 }
 
 function boolValue(key: string): boolean {
@@ -220,10 +261,12 @@ function setBool(key: string, checked: boolean) {
 
     <div class="page-header">
       <h1>Platform Settings</h1>
-      <button class="btn btn-primary" :disabled="!dirty || saving" @click="save">
-        <span class="mdi mdi-content-save"></span>
-        {{ saving ? 'Saving…' : 'Save changes' }}
-      </button>
+      <span v-if="!loading && keys.length" class="save-status text-sm" :class="{ 'text-danger': saveFailed, 'text-muted': !saveFailed }">
+        <template v-if="saving"><span class="mdi mdi-loading mdi-spin"></span> Saving…</template>
+        <template v-else-if="saveFailed"><span class="mdi mdi-alert-circle-outline"></span> Not saved</template>
+        <template v-else-if="dirty">Unsaved changes</template>
+        <template v-else><span class="mdi mdi-check"></span> All changes saved</template>
+      </span>
     </div>
 
     <div v-if="loading" class="spinner"></div>
@@ -388,7 +431,8 @@ function setBool(key: string, checked: boolean) {
                 <input
                   v-else-if="types[key] === 'int'"
                   :id="`set-${key}`"
-                  v-model="values[key]"
+                  :value="values[key]"
+                  @input="setValue(key, $event)"
                   type="number"
                   min="-1"
                   step="1"
@@ -433,7 +477,8 @@ function setBool(key: string, checked: boolean) {
                 <input
                   v-else-if="types[key] === 'int'"
                   :id="`set-${key}`"
-                  v-model="values[key]"
+                  :value="values[key]"
+                  @input="setValue(key, $event)"
                   type="number"
                   class="form-input"
                 />
@@ -471,6 +516,12 @@ function setBool(key: string, checked: boolean) {
   letter-spacing: 0.08em;
   color: var(--text-secondary, var(--text-muted));
   margin-bottom: 12px;
+}
+
+.save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .unsaved {
