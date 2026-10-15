@@ -9,7 +9,11 @@ import world from 'world-atlas/countries-110m.json'
 import { ALPHA2_TO_NUMERIC } from '@/api/countryCodes'
 import { countryName } from '@/views/analytics/format'
 
-const props = defineProps<{ countries: { label: string; count: number }[] }>()
+// highlight outlines one country (alpha-2); select fires with a clicked country's alpha-2.
+const props = defineProps<{ countries: { label: string; count: number }[]; highlight?: string | null }>()
+const emit = defineEmits<{ select: [alpha2: string] }>()
+
+const NUMERIC_TO_ALPHA2 = Object.fromEntries(Object.entries(ALPHA2_TO_NUMERIC).map(([a, n]) => [n, a]))
 
 const W = 960
 const H = 480
@@ -38,6 +42,17 @@ const byId = computed(() => {
   return m
 })
 const max = computed(() => Math.max(1, ...Object.values(byId.value)))
+
+// Drawn again on top of the rest, so its outline isn't covered by a neighbour's.
+const highlighted = computed(() => {
+  const num = props.highlight ? ALPHA2_TO_NUMERIC[props.highlight.toUpperCase()] : undefined
+  return num ? paths.find((p) => p.id === num) ?? null : null
+})
+
+function onClick(p: { id: string }) {
+  const alpha2 = NUMERIC_TO_ALPHA2[p.id]
+  if (alpha2 && byId.value[p.id]) emit('select', alpha2)
+}
 
 function fillFor(id: string): string {
   const c = byId.value[id]
@@ -75,6 +90,13 @@ function onHover(e: MouseEvent, p: { id: string; name: string }) {
         :d="p.d"
         :style="byId[p.id] ? { fill: fillFor(p.id) } : undefined"
         @mousemove="onHover($event, p)"
+        @click="onClick(p)"
+      />
+      <path
+        v-if="highlighted"
+        class="country country-hl"
+        :d="highlighted.d"
+        :style="byId[highlighted.id] ? { fill: fillFor(highlighted.id) } : undefined"
       />
     </svg>
     <div v-if="tip" class="worldmap-tip" :style="{ left: tip.x + 'px', top: tip.y + 'px' }">{{ tip.text }}</div>

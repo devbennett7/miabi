@@ -106,8 +106,8 @@ type RouteStat struct {
 }
 
 // WebAnalytics is the cookieless web pillar: uniques plus the categorical
-// breakdowns (paths, referrers, countries, browsers, methods). Countries are not
-// capped: the world map and the HTTP Traffic list show every one seen.
+// breakdowns (paths, referrers, countries, browsers, methods). Countries, paths and user
+// agents return every entry tracked (at most topKCap), for the scrollable lists.
 type WebAnalytics struct {
 	UniqueVisitors int64      `json:"unique_visitors"`
 	BotRequests    int64      `json:"bot_requests"`
@@ -365,11 +365,11 @@ func BuildReport(rows []models.AnalyticsRollup, since, until time.Time) Report {
 		UniqueVisitors: rep.Totals.UniqueVisit,
 		BotRequests:    botReqs,
 		HumanRequests:  rep.Totals.Requests - botReqs,
-		TopPaths:       topN(paths, 15),
+		TopPaths:       topN(paths, len(paths)),
 		TopReferrers:   topN(referrers, 15),
 		TopCountries:   topN(countries, len(countries)),
 		TopBrowsers:    topN(browsers, 10),
-		TopUserAgents:  topN(userAgents, 15),
+		TopUserAgents:  topN(userAgents, len(userAgents)),
 		TopOS:          topN(oses, 10),
 		TopDevices:     topN(devices, 10),
 		TopMethods:     topN(methods, 10),

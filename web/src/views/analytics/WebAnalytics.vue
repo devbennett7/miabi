@@ -49,9 +49,9 @@ function botPct(r: AnalyticsReport): number {
     </div>
 
     <div class="break-grid">
-      <Breakdown :title="$t('analytics.topPages')" :items="report.web.top_paths" />
+      <Breakdown :title="$t('analytics.topPages')" :items="report.web.top_paths" :limit="15" other-key="analytics.otherPaths" />
       <Breakdown :title="$t('analytics.referrers')" :items="report.web.top_referrers" />
-      <Breakdown :title="$t('analytics.countries')" :items="report.web.top_countries" kind="country" :limit="15"
+      <Breakdown :title="$t('analytics.countries')" :items="report.web.top_countries" kind="country" :limit="15" other-key="analytics.otherCountries"
         empty-hint="Country data needs the GeoIP database on the gateway." />
       <Breakdown :title="$t('analytics.browsers')" :items="report.web.top_browsers" />
       <Breakdown :title="$t('analytics.operatingSystems')" :items="report.web.top_os" />
@@ -59,7 +59,7 @@ function botPct(r: AnalyticsReport): number {
     </div>
 
     <div class="ua-grid">
-      <Breakdown :title="$t('analytics.topUserAgents')" :items="report.web.top_user_agents"
+      <Breakdown :title="$t('analytics.topUserAgents')" :items="report.web.top_user_agents" scroll share searchable
         empty-hint="No requests carried a User-Agent header in this range." />
     </div>
   </AnalyticsShell>
