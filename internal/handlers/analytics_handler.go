@@ -22,6 +22,7 @@ package handlers
 import (
 	"encoding/csv"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -75,17 +76,16 @@ func (h *AnalyticsHandler) maxWindow() time.Duration {
 }
 
 // Report returns the combined analytics report for the workspace over a range. Query params:
-// range = window ending now (15m, 1h, 24h, 7d, 30d; default 24h), and app = an optional
-// application id to filter to a single app.
+// range = a window ending now (15m, 1h, 24h, 7d, 30d; default 24h) or an absolute
+// "<from>..<to>" (see resolveWindow), and app = an optional application id to filter to a single app.
 func (h *AnalyticsHandler) Report(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 
-	window := parseRange(c.Query("range"), 24*time.Hour)
-	if max := h.maxWindow(); window > max {
-		window = max
+	since, until, err := resolveWindow(c.Query("range"), time.Now().UTC(), h.maxWindow())
+	if err != nil {
+		return c.AbortBadRequest(err.Error())
 	}
-	until := time.Now().UTC()
-	since := until.Add(-window)
+	window := until.Sub(since)
 
 	appFilter, err := h.appFilterParam(c)
 	if err != nil {
@@ -119,12 +119,10 @@ func (h *AnalyticsHandler) Export(c *okapi.Context) error {
 		return entitlementAbort(c, err)
 	}
 	wsID := middlewares.WorkspaceID(c)
-	window := parseRange(c.Query("range"), 24*time.Hour)
-	if window > maxAnalyticsRange {
-		window = maxAnalyticsRange
+	since, until, err := resolveWindow(c.Query("range"), time.Now().UTC(), maxAnalyticsRange)
+	if err != nil {
+		return c.AbortBadRequest(err.Error())
 	}
-	until := time.Now().UTC()
-	since := until.Add(-window)
 
 	appFilter, err := h.appFilterParam(c)
 	if err != nil {
@@ -165,12 +163,11 @@ func (h *AnalyticsHandler) Export(c *okapi.Context) error {
 func (h *AnalyticsHandler) Summary(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
 
-	window := parseRange(c.Query("range"), 24*time.Hour)
-	if max := h.maxWindow(); window > max {
-		window = max
+	since, until, err := resolveWindow(c.Query("range"), time.Now().UTC(), h.maxWindow())
+	if err != nil {
+		return c.AbortBadRequest(err.Error())
 	}
-	until := time.Now().UTC()
-	since := until.Add(-window)
+	window := until.Sub(since)
 
 	appFilter, err := h.appFilterParam(c)
 	if err != nil {
@@ -253,12 +250,11 @@ var errAppNotFound = errors.New("application not found")
 // UI's app filter shows only apps with traffic.
 func (h *AnalyticsHandler) Apps(c *okapi.Context) error {
 	wsID := middlewares.WorkspaceID(c)
-	window := parseRange(c.Query("range"), 24*time.Hour)
-	if max := h.maxWindow(); window > max {
-		window = max
+	since, until, err := resolveWindow(c.Query("range"), time.Now().UTC(), h.maxWindow())
+	if err != nil {
+		return c.AbortBadRequest(err.Error())
 	}
-	until := time.Now().UTC()
-	ids, err := h.repo.AppIDs(wsID, until.Add(-window), until)
+	ids, err := h.repo.AppIDs(wsID, since, until)
 	if err != nil {
 		return c.AbortInternalServerError("failed to list analytics apps", err)
 	}
@@ -285,4 +281,45 @@ func parseRange(s string, def time.Duration) time.Duration {
 		return d
 	}
 	return def
+}
+
+// resolveWindow turns ?range= into [since, until). A relative range ("7d") ends at now; an
+// absolute one is "<from>..<to>", each RFC 3339 or a YYYY-MM-DD date (UTC midnight), with to
+// exclusive and clamped to now. Either way since never reaches back further than max.
+func resolveWindow(raw string, now time.Time, max time.Duration) (since, until time.Time, err error) {
+	from, to, absolute := strings.Cut(strings.TrimSpace(raw), "..")
+	if !absolute {
+		window := parseRange(raw, 24*time.Hour)
+		if window > max {
+			window = max
+		}
+		return now.Add(-window), now, nil
+	}
+	if since, err = parseRangeBound(from); err != nil {
+		return since, until, err
+	}
+	if until, err = parseRangeBound(to); err != nil {
+		return since, until, err
+	}
+	if until.After(now) {
+		until = now
+	}
+	if floor := now.Add(-max); since.Before(floor) {
+		since = floor
+	}
+	if !since.Before(until) {
+		return since, until, errors.New("range: the start must be before the end and within the retention window")
+	}
+	return since, until, nil
+}
+
+func parseRangeBound(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC(), nil
+	}
+	if t, err := time.Parse(time.DateOnly, s); err == nil {
+		return t, nil
+	}
+	return time.Time{}, fmt.Errorf("range: %q is not an RFC 3339 time or a YYYY-MM-DD date", s)
 }

@@ -119,23 +119,44 @@ export interface LiveVisitors {
   window_seconds: number
 }
 
+const CUSTOM_RANGE = /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/
+
+// isCustomRange reports whether range is a "YYYY-MM-DD..YYYY-MM-DD" span of local dates.
+export function isCustomRange(range: string): boolean {
+  return CUSTOM_RANGE.test(range)
+}
+
+function localMidnight(date: string, addDays = 0): Date {
+  const [y, m, d] = date.split('-').map(Number)
+  return new Date(y, m - 1, d + addDays)
+}
+
+// toApiRange sends a custom span as absolute instants so the server cuts days at
+// the viewer's midnight, not UTC's; the end date is inclusive.
+function toApiRange(range: string): string {
+  const m = CUSTOM_RANGE.exec(range)
+  if (!m) return range
+  return `${localMidnight(m[1]).toISOString()}..${localMidnight(m[2], 1).toISOString()}`
+}
+
 // Workspace Analytics: HTTP traffic, performance and web analytics rolled up
 // from the gateway's request stream. `range` is a window ending now
-// (15m, 1h, 24h, 7d, 30d); `app` filters to a single application.
+// (15m, 1h, 24h, 7d, 30d) or a custom span (isCustomRange); `app`
+// filters to a single application.
 export const analyticsApi = {
   report: (ws: number, range: string, app?: number) =>
     api.get<ApiResponse<AnalyticsReport>>(`${w(ws)}/analytics`, {
-      params: { range, ...(app ? { app } : {}) },
+      params: { range: toApiRange(range), ...(app ? { app } : {}) },
     }),
   apps: (ws: number, range: string) =>
     api.get<ApiResponse<{ application_ids: number[] }>>(`${w(ws)}/analytics/apps`, {
-      params: { range },
+      params: { range: toApiRange(range) },
     }),
   // The dashboard's traffic card. Same numbers as `report` for the fields it
   // shares, but the server neither computes nor reads the breakdowns.
   summary: (ws: number, range: string, app?: number) =>
     api.get<ApiResponse<AnalyticsSummary>>(`${w(ws)}/analytics/summary`, {
-      params: { range, ...(app ? { app } : {}) },
+      params: { range: toApiRange(range), ...(app ? { app } : {}) },
     }),
   // Visitors active in the last few minutes. Independent of `range` — it's a
   // "right now" number, polled while the dashboard is open.
@@ -146,7 +167,7 @@ export const analyticsApi = {
   // CSV export (Enterprise-gated server-side). Returns the relative API path so
   // the caller can open it as a download.
   exportPath: (ws: number, range: string, app?: number) => {
-    const p = new URLSearchParams({ range })
+    const p = new URLSearchParams({ range: toApiRange(range) })
     if (app) p.set('app', String(app))
     return `${w(ws)}/analytics/export?${p.toString()}`
   },
