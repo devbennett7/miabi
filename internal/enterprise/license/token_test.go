@@ -28,7 +28,6 @@ import (
 	"time"
 )
 
-// Issuance lives in the customer portal; these mirror its signer so Verify can be exercised.
 func generateKey() (publicKey, privateKey string, err error) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -82,7 +81,6 @@ func TestSignVerifyRoundTrip(t *testing.T) {
 func TestVerifyTamperFails(t *testing.T) {
 	pub, priv, _ := generateKey()
 	tok, _ := sign(priv, sampleClaims(time.Now()))
-	// Flip one byte in the payload segment.
 	b := []byte(tok)
 	mid := len(b) / 2
 	b[mid] ^= 0x01
