@@ -236,6 +236,10 @@ func gatewayConfigEnv(m *Manifest) []string {
 			"GOMA_PROXY_TRUSTED_PROXIES="+strings.Join(proxies, ","),
 		)
 	}
+	// Env rather than goma.yml: an older Goma ignores an unknown variable but refuses an unknown key.
+	if m.Install.GatewayCountryHeader {
+		env = append(env, "GOMA_GEOIP_COUNTRY_HEADER=true")
+	}
 	return env
 }
 
