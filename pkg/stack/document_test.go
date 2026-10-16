@@ -115,6 +115,7 @@ func TestTheKindedOnlySettingsSurviveTheRoundTrip(t *testing.T) {
 		DNS:                   DNSSpec{ReconcileMinutes: 30},
 		License:               LicenseSpec{File: "/etc/miabi/license.jwt"},
 		GatewayTrustedProxies: []string{"173.245.48.0/20", "2400:cb00::/32"},
+		GatewayCountryHeader:  true,
 		ServerTrustedProxies:  []string{"10.62.0.0/16"},
 		Backup: &BackupSpec{
 			Schedule:    "0 3 * * *",

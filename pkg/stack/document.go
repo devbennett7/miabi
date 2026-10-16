@@ -135,6 +135,9 @@ type GatewaySpec struct {
 	// Cloudflare, or a TLS-terminating load balancer. Only connections from these may set the client IP
 	// through forwarded headers; leave it unset when the gateway faces the internet directly.
 	TrustedProxies []string `yaml:"trustedProxies,omitempty"`
+	// CountryHeader sends each client's ISO country code to every app in the X-Goma-Country request
+	// header. It needs a GeoIP database beside goma.yml; without one the header is simply never set.
+	CountryHeader bool `yaml:"countryHeader,omitempty"`
 }
 
 // RegistrySpec is the built-in OCI registry. The host anchors every image reference Miabi has
@@ -264,6 +267,7 @@ type InstallSettings struct {
 	Backup                *BackupSpec
 	License               LicenseSpec
 	GatewayTrustedProxies []string
+	GatewayCountryHeader  bool
 	ServerTrustedProxies  []string
 }
 
@@ -407,6 +411,7 @@ func (d *Document) Manifest() *Manifest {
 			Backup:                copyBackup(d.Spec.Backup),
 			License:               d.Spec.License,
 			GatewayTrustedProxies: slices.Clone(d.Spec.Gateway.TrustedProxies),
+			GatewayCountryHeader:  d.Spec.Gateway.CountryHeader,
 			ServerTrustedProxies:  slices.Clone(d.Spec.Server.TrustedProxies),
 		},
 	}
@@ -454,6 +459,7 @@ func NewDocument(m *Manifest) *Document {
 				ConfigSha:      m.Gateway.ConfigSHA,
 				Env:            gatewayEnv,
 				TrustedProxies: slices.Clone(m.Install.GatewayTrustedProxies),
+				CountryHeader:  m.Install.GatewayCountryHeader,
 			},
 			Registry: RegistrySpec{
 				Enabled: m.Registry.Enabled,
