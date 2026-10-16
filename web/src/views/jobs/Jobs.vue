@@ -20,8 +20,9 @@ const tab = ref<'runs' | 'scheduled' | 'declared'>('runs')
 const jobs = ref<Job[]>([])
 const cronJobs = ref<CronJob[]>([])
 const definitions = ref<JobDefinition[]>([])
-// GitOps owns these: the console may run them, pause and resume a schedule, nothing else.
 function managedBy(m?: Record<string, string>) { return m?.['miabi.io/managed-by'] || '' }
+// GitOps owns these: the console may run them, pause and resume a schedule, nothing else.
+function gitopsOwned(m?: Record<string, string>) { return managedBy(m) === 'gitops' }
 const apps = ref<Application[]>([])
 const registries = ref<Registry[]>([])
 let poll: ReturnType<typeof setInterval> | null = null
@@ -135,6 +136,7 @@ const showCron = ref(false)
 const savingCron = ref(false)
 const editingCronId = ref<number | null>(null)
 const cronManaged = ref('')
+const cronLocked = computed(() => cronManaged.value === 'gitops')
 const editingCron = ref<CronJob | null>(null)
 const cronForm = ref<{ app: number | null; name: string; display_name: string; schedule: string; image: string; registry: number | null; run_as_user: string; concurrency_policy: 'allow' | 'forbid' | 'replace'; enabled: boolean; timeout_secs: number; history_limit: number }>(
   { app: null, name: '', display_name: '', schedule: '0 3 * * *', image: '', registry: null, run_as_user: '', concurrency_policy: 'allow', enabled: true, timeout_secs: 0, history_limit: 0 },
@@ -169,7 +171,7 @@ async function saveCron() {
   const orig = editingCron.value
   // A managed schedule only takes a pause or resume: resend what is stored, so a
   // command re-split from the text field can't read as an edit.
-  const input: CronJobInput = cronManaged.value && orig ? {
+  const input: CronJobInput = cronLocked.value && orig ? {
     application_id: orig.application_id, name: orig.name, display_name: orig.display_name, schedule: orig.schedule,
     command: orig.command, entrypoint: orig.entrypoint, image: orig.image, registry_id: orig.registry_id ?? null,
     run_as_user: orig.run_as_user || '', concurrency_policy: orig.concurrency_policy, enabled: cronForm.value.enabled,
@@ -275,8 +277,8 @@ const noApps = computed(() => apps.value.length === 0)
                 <span class="cell-title" style="font-family: monospace">{{ j.name || cmd(j.command) }}</span>
                 <div v-if="j.name" class="cell-sub" style="font-family: monospace">{{ cmd(j.command) }}</div>
                 <div v-if="j.source === 'scheduled'" class="cell-sub"><span class="mdi mdi-clock-outline"></span>{{ $t('jobs.scheduledTag') }}</div>
-                <div v-else-if="j.source === 'gitops' || j.source === 'release'" class="cell-sub">
-                  <span class="mdi mdi-source-branch"></span>{{ $t(j.source === 'release' ? 'jobs.releaseTag' : 'jobs.gitopsTag', { name: definitionName(j.job_definition_id) || j.name }) }}
+                <div v-else-if="j.source === 'gitops' || j.source === 'apply' || j.source === 'release'" class="cell-sub">
+                  <span class="mdi" :class="j.source === 'apply' ? 'mdi-console' : 'mdi-source-branch'"></span>{{ $t(j.source === 'release' ? 'jobs.releaseTag' : 'jobs.gitopsTag', { name: definitionName(j.job_definition_id) || j.name }) }}
                 </div>
                 <div v-if="j.status === 'pending' && j.wait_deployment_id" class="cell-sub">{{ $t('jobs.waitingForDeploy') }}</div>
                 <div v-if="(j.attempt ?? 1) > 1" class="cell-sub">{{ $t('jobs.attempt', { n: j.attempt }) }}</div>
@@ -341,7 +343,7 @@ const noApps = computed(() => apps.value.length === 0)
               <td class="cell-sub">{{ c.app_name || appName(c.application_id) }}</td>
               <td>
                 <span class="cell-title">{{ c.display_name || c.name }}</span>
-                <span v-if="managedBy(c.metadata)" class="badge badge-neutral" style="margin-left: 6px" :title="$t('jobs.managedHint')"><span class="mdi mdi-source-branch"></span>{{ managedBy(c.metadata) }}</span>
+                <span v-if="managedBy(c.metadata)" class="badge badge-neutral" style="margin-left: 6px" :title="$t(gitopsOwned(c.metadata) ? 'jobs.managedHint' : 'jobs.applyHint')"><span class="mdi" :class="gitopsOwned(c.metadata) ? 'mdi-source-branch' : 'mdi-console'"></span>{{ managedBy(c.metadata) }}</span>
                 <div v-if="c.display_name" class="cell-sub" style="font-family: monospace">{{ c.name }}</div>
               </td>
               <td class="cell-sub" style="font-family: monospace">{{ c.schedule }}</td>
@@ -351,7 +353,7 @@ const noApps = computed(() => apps.value.length === 0)
               <td class="text-right table-actions">
                 <button v-if="ws.canEdit" class="btn btn-sm btn-secondary" :title="$t('jobs.runNow')" @click="runCronNow(c)">{{ $t('jobs.runNow') }}</button>
                 <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEditCron(c)"><span class="mdi mdi-pencil-outline"></span></button>
-                <button v-if="ws.canEdit && !managedBy(c.metadata)" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="askDeleteCron(c)"><span class="mdi mdi-delete-outline"></span></button>
+                <button v-if="ws.canEdit && !gitopsOwned(c.metadata)" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="askDeleteCron(c)"><span class="mdi mdi-delete-outline"></span></button>
               </td>
             </tr>
           </tbody>
@@ -428,8 +430,8 @@ const noApps = computed(() => apps.value.length === 0)
         </div>
         <form @submit.prevent="saveCron">
           <div class="modal-body">
-            <p v-if="cronManaged" class="form-hint" style="margin-bottom: 12px"><span class="mdi mdi-source-branch"></span>{{ $t('jobs.managedHint') }}</p>
-            <fieldset :disabled="!!cronManaged" style="border: 0; padding: 0; margin: 0; min-width: 0">
+            <p v-if="cronManaged" class="form-hint" style="margin-bottom: 12px"><span class="mdi" :class="cronLocked ? 'mdi-source-branch' : 'mdi-console'"></span>{{ $t(cronLocked ? 'jobs.managedHint' : 'jobs.applyHint') }}</p>
+            <fieldset :disabled="cronLocked" style="border: 0; padding: 0; margin: 0; min-width: 0">
             <div class="form-group">
               <label class="form-label">{{ $t('dashboard.col.application') }}</label>
               <select v-model="cronForm.app" class="form-select" required :disabled="!!editingCronId" :aria-label="$t('dashboard.col.application')">

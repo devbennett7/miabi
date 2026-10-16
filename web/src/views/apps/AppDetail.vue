@@ -2123,6 +2123,7 @@ async function detachDatabase(d: AppDatabase) {
               <template v-else-if="managedBy === 'gitops'"> · <span class="mdi mdi-source-branch"></span>
                 <router-link class="prov-link" :to="{ name: 'gitops' }" :title="$t('appDetail.managedByGitops')">{{ $t('appDetail.gitops') }}</router-link>
               </template>
+              <template v-else-if="managedBy === 'apply'"> · <span class="mdi mdi-console" :title="$t('appDetail.managedByApply')" :aria-label="$t('appDetail.managedByApply')"></span></template>
             </div>
           </div>
         </div>
@@ -3160,6 +3161,12 @@ async function detachDatabase(d: AppDatabase) {
               <template #link><router-link :to="{ name: 'gitops' }">{{ $t('appDetail.deploy.sync') }}</router-link></template>
             </i18n-t>
           </p>
+          <p v-else-if="managedBy === 'apply'" class="form-hint">
+            <span class="mdi mdi-console"></span>
+            <i18n-t keypath="appDetail.settings.applyHint" tag="span">
+              <template #cmd><code>miabi apply</code></template>
+            </i18n-t>
+          </p>
         </div>
 
         <!-- Editor -->
@@ -4043,6 +4050,15 @@ async function detachDatabase(d: AppDatabase) {
                 <strong>{{ $t('appDetail.deploy.gitopsTitle') }}</strong>
                 <i18n-t keypath="appDetail.deploy.gitopsHint" tag="span">
                   <template #link><router-link :to="{ name: 'gitops' }">{{ $t('appDetail.deploy.sync') }}</router-link></template>
+                </i18n-t>
+              </div>
+            </div>
+            <div v-else-if="managedBy === 'apply'" class="tpl-notice">
+              <span class="mdi mdi-console"></span>
+              <div class="tpl-notice-text">
+                <strong>{{ $t('appDetail.deploy.applyTitle') }}</strong>
+                <i18n-t keypath="appDetail.deploy.applyHint" tag="span">
+                  <template #cmd><code>miabi apply</code></template>
                 </i18n-t>
               </div>
             </div>

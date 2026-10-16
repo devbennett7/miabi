@@ -66,7 +66,8 @@ const (
 	ManagedByMarketplace = "marketplace"  // installed from a marketplace template
 	ManagedByStack       = "stack"        // created as part of a stack
 	ManagedByStackImport = "stack-import" // created by importing a compose file
-	ManagedByGitOps      = "gitops"       // created/reconciled by the declarative apply engine
+	ManagedByGitOps      = "gitops"       // reconciled from a Git repository by a GitOps project
+	ManagedByApply       = "apply"        // applied as a manifest through the CLI or API (miabi apply)
 )
 
 // SourceOwnedElsewhere reports whether an application's source (its image or repository) is owned

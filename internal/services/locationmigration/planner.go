@@ -180,6 +180,9 @@ func (p *planner) checkApp() {
 	if owner, ok := models.SourceOwnedElsewhere(app.Metadata); ok && owner == models.ManagedByGitOps {
 		p.warn("gitops", app.Name, "managed by GitOps: if its manifest sets placement.location, change it to %q, or the next sync will refuse the app", p.plan.Location)
 	}
+	if app.Metadata[models.MetaManagedBy] == models.ManagedByApply {
+		p.warn("apply", app.Name, "applied from a manifest: if it sets placement.location, change it to %q, or the next miabi apply will refuse the app", p.plan.Location)
+	}
 	alias := node.AppAlias(app)
 	for i := range p.peers {
 		if envMentions(p.peers[i].EnvVars, alias) {

@@ -98,6 +98,8 @@ type ApplyRequest struct {
 		// Delete removes exactly the resources the bundle names (the inverse of an
 		// apply) instead of converging to them. Honors DryRun.
 		Delete bool `json:"delete"`
+		// Force applies changes to resources a GitOps project owns; its next sync reverts them.
+		Force bool `json:"force"`
 	} `json:"body"`
 }
 
@@ -121,7 +123,7 @@ func (h *ApplyHandler) Apply(c *okapi.Context, req *ApplyRequest) error {
 		return ok(c, res)
 	}
 
-	opts := apply.Options{Prune: req.Body.Prune, Admin: h.placer.admin(c)}
+	opts := apply.Options{Prune: req.Body.Prune, Force: req.Body.Force, Admin: h.placer.admin(c)}
 	if req.Body.DryRun {
 		opts.CheckReferences = true
 		plan, _, err := h.svc.Plan(ctx, wsID, []byte(req.Body.Manifests), opts)
@@ -145,6 +147,8 @@ func (h *ApplyHandler) mapErr(c *okapi.Context, err error) error {
 	switch {
 	case errors.Is(err, apply.ErrInvalidManifest):
 		return c.AbortBadRequest(err.Error())
+	case errors.Is(err, apply.ErrOwnedByGitOps):
+		return c.AbortWithError(http.StatusConflict, err)
 	default:
 		return c.AbortInternalServerError("apply failed", err)
 	}

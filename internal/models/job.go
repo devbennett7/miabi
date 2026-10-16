@@ -49,6 +49,8 @@ const (
 	JobSourceScheduled = "scheduled"
 	// JobSourceGitOps is a run of a declared Job started by a sync.
 	JobSourceGitOps = "gitops"
+	// JobSourceApply is a run of a declared Job started by a one-shot miabi apply.
+	JobSourceApply = "apply"
 	// JobSourceRelease is a run of an onRelease Job started by a release becoming active.
 	JobSourceRelease = "release"
 )

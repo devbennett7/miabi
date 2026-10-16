@@ -387,7 +387,9 @@
       "noCacheHint": "Reconstruit chaque couche pour ce déploiement uniquement. Plus lent — à utiliser lorsqu’une couche en cache est devenue obsolète.",
       "pipelineHint": "Miabi exécute les étapes de {path} sur {ref} ; l’étape de déploiement met en service l’image qu’elles construisent. Vous suivrez les journaux de l’exécution, pas ceux d’un déploiement.",
       "pipelineTitle": "Les déploiements exécutent le pipeline « {name} ».",
-      "sync": "synchronisation"
+      "sync": "synchronisation",
+      "applyTitle": "Appliquée depuis un manifeste.",
+      "applyHint": "Un redéploiement manuel est conservé jusqu’au prochain {cmd} de son manifeste."
     },
     "deployment": "Déploiement",
     "deploymentStrategy": "Stratégie de déploiement",
@@ -647,7 +649,8 @@
       "templateImageWarning": "Changer l’image ici signifie qu’elle ne correspond plus au modèle, et une future mise à niveau du modèle pourrait l’écraser.",
       "waitHealthyHint": "Les déploiements attendent que le conteneur se déclare sain avant la mise en service.",
       "imageProbeHint": "Utilise le HEALTHCHECK de l’image, s’il en déclare un. Les déploiements ne l’attendent pas.",
-      "noneProbeHint": "Aucune vérification : le HEALTHCHECK de l’image est aussi désactivé. À utiliser pour les workers et planificateurs qui ne servent pas de HTTP."
+      "noneProbeHint": "Aucune vérification : le HEALTHCHECK de l’image est aussi désactivé. À utiliser pour les workers et planificateurs qui ne servent pas de HTTP.",
+      "applyHint": "Appliquée depuis un manifeste — le prochain {cmd} écrase les modifications faites ici."
     },
     "shell": "Shell",
     "source": {
@@ -709,7 +712,8 @@
     "volumes": "Volumes",
     "when": "Quand",
     "zeroUnlimited": "0 = illimité.",
-    "volumesHidden": "{n} volume(s) situé(s) dans un autre emplacement ou sur un autre nœud sont masqués — une application ne monte les volumes locaux que depuis son propre nœud."
+    "volumesHidden": "{n} volume(s) situé(s) dans un autre emplacement ou sur un autre nœud sont masqués — une application ne monte les volumes locaux que depuis son propre nœud.",
+    "managedByApply": "Appliquée depuis un manifeste avec miabi apply"
   },
   "apps": {
     "browseMarketplace": "Parcourir la marketplace",
@@ -1995,7 +1999,8 @@
       "once": "une fois",
       "onRelease": "à chaque release"
     },
-    "attempt": "tentative {n}"
+    "attempt": "tentative {n}",
+    "applyHint": "Appliqué depuis un manifeste : le prochain miabi apply écrase les modifications faites ici."
   },
   "ldap": {
     "testConnection": "Tester la connexion"

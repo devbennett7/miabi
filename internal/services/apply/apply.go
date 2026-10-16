@@ -61,13 +61,18 @@ import (
 // active release runs, so a pin whose deploy failed shows as drift.
 const MetaDigest = models.MetaDigest
 
-// ManagedByGitOps marks resources created/managed by the declarative apply
-// engine (GitOps or one-shot apply). Prune only ever deletes these.
+// ManagedByGitOps marks resources the declarative engine reconciles for a GitOps project.
 const ManagedByGitOps = models.ManagedByGitOps
+
+// ManagedByApply marks resources the declarative engine created from a one-shot apply (CLI or API).
+// Each run prunes only its own owner's resources, so a CLI prune never deletes a GitOps project's.
+const ManagedByApply = models.ManagedByApply
 
 var (
 	// ErrInvalidManifest signals a parse/validation failure (HTTP 400).
 	ErrInvalidManifest = errors.New("invalid manifest")
+	// ErrOwnedByGitOps refuses a one-shot apply that would change a GitOps project's resource (HTTP 409).
+	ErrOwnedByGitOps = errors.New("owned by a GitOps project")
 	// ErrPlainSecret refuses a Secret with a plaintext value where only sealed values are allowed.
 	ErrPlainSecret = errors.New("this source only accepts sealed secrets, but these Secrets carry a plaintext value")
 	// ErrUnsupportedKind is returned when a plan needs a mutation the v1 executor
@@ -551,6 +556,9 @@ type Options struct {
 	CheckReferences bool
 	// RequireSealedSecrets refuses the bundle when a Secret carries a plaintext value.
 	RequireSealedSecrets bool
+	// Force lets a one-shot apply change resources a GitOps project owns. They stay the project's,
+	// so its next sync reverts the change.
+	Force bool
 }
 
 type adminCtxKey struct{}
@@ -583,6 +591,48 @@ func withOwnerSource(ctx context.Context, src string) context.Context {
 func ownerSource(ctx context.Context) string {
 	v, _ := ctx.Value(ownerSourceCtxKey{}).(string)
 	return v
+}
+
+// managedBy is the owner the run stamps on what it creates: the GitOps project's engine when the run
+// has a source, the one-shot apply otherwise.
+func managedBy(ctx context.Context) string {
+	return ownerOf(ownerSource(ctx))
+}
+
+func ownerOf(source string) string {
+	if source != "" {
+		return ManagedByGitOps
+	}
+	return ManagedByApply
+}
+
+func claim(ctx context.Context, m models.Metadata) models.Metadata {
+	if ownerSource(ctx) == "" || m[models.MetaGitOpsSource] != "" {
+		return m
+	}
+	if owner := m[models.MetaManagedBy]; owner != ManagedByGitOps && owner != ManagedByApply {
+		return m
+	}
+	return tagSource(ctx, models.SetBuiltin(m, models.MetaManagedBy, ManagedByGitOps))
+}
+
+// refuseGitOpsOwned fails a one-shot apply that would update a resource a GitOps project owns: the
+// project's next sync would silently revert it. Judged by managed-by, as older resources carry no source label.
+func refuseGitOpsOwned(plan *declarative.Plan, actual *declarative.ResourceSet) error {
+	var owned []string
+	for _, ch := range plan.Changes {
+		if ch.Action != declarative.ActionUpdate {
+			continue
+		}
+		if a, ok := actual.Get(string(ch.Kind) + "/" + ch.Name); ok && a.Metadata.Labels[declarative.LabelManagedBy] == ManagedByGitOps {
+			owned = append(owned, string(ch.Kind)+"/"+ch.Name)
+		}
+	}
+	if len(owned) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: %s. Change them in the project's Git repository, or use --force to override until its next sync",
+		ErrOwnedByGitOps, strings.Join(owned, ", "))
 }
 
 // tagSource adds the owning GitOps source label to m when the apply runs for a
@@ -638,12 +688,15 @@ func (s *Service) Plan(ctx context.Context, workspaceID uint, manifests []byte, 
 	if err != nil {
 		return nil, nil, err
 	}
-	// Prune only ever deletes resources this engine owns, so a GitOps prune can never remove a hand-created or
-	// database-owned resource. For a GitOps project (OwnerSource set) it is further scoped to that project's own
-	// resources, so two projects backed by one repo don't see each other's apps as orphans and tear them down.
+
 	plan := declarative.BuildPlan(desired, actual, declarative.PlanOptions{
-		Prune: opts.Prune, PruneManagedBy: ManagedByGitOps, PruneGitOpsSource: opts.OwnerSource,
+		Prune: opts.Prune, PruneManagedBy: ownerOf(opts.OwnerSource), PruneGitOpsSource: opts.OwnerSource,
 	})
+	if opts.OwnerSource == "" && !opts.Force {
+		if err := refuseGitOpsOwned(plan, actual); err != nil {
+			return nil, nil, err
+		}
+	}
 	if err := s.checkLocations(workspaceID, plan, desired, opts.Admin); err != nil {
 		return nil, nil, err
 	}
@@ -2111,7 +2164,7 @@ func (s *Service) applyStack(ctx context.Context, workspaceID uint, ch declarati
 			Name:        ch.Name,
 			Description: desired.Stack.Description,
 			ClusterID:   target.ClusterID,
-			Metadata:    tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, ManagedByGitOps)),
+			Metadata:    tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, managedBy(ctx))),
 			Annotations: desired.Metadata.Annotations,
 		})
 		return err
@@ -2350,7 +2403,7 @@ func (s *Service) applyRegistry(ctx context.Context, workspaceID uint, ch declar
 			// managed-by label is what scopes a later prune to this engine's own
 			// credentials.
 			Metadata: tagSource(ctx, models.SetBuiltin(models.SanitizeUserMetadata(desired.Metadata.Labels),
-				models.MetaManagedBy, ManagedByGitOps,
+				models.MetaManagedBy, managedBy(ctx),
 			)),
 			Annotations: desired.Metadata.Annotations,
 		}
@@ -2394,7 +2447,7 @@ func (s *Service) applyRoute(ctx context.Context, workspaceID uint, ch declarati
 		if ierr != nil {
 			return ierr
 		}
-		in.Metadata = tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, ManagedByGitOps))
+		in.Metadata = tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, managedBy(ctx)))
 		_, err = s.routes.Create(ctx, workspaceID, in)
 		return err
 	case declarative.ActionUpdate:
@@ -2410,7 +2463,7 @@ func (s *Service) applyRoute(ctx context.Context, workspaceID uint, ch declarati
 		if ierr != nil {
 			return ierr
 		}
-		in.Metadata = tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, ManagedByGitOps))
+		in.Metadata = tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, managedBy(ctx)))
 		_, err = s.routes.Update(ctx, workspaceID, rt.ID, in)
 		return err
 	case declarative.ActionDelete:
@@ -2517,7 +2570,7 @@ func routeSpecOf(r models.Route, app, path string, certNameByID map[uint]string)
 func (s *Service) applyVolume(ctx context.Context, workspaceID uint, ch declarative.Change, desired declarative.Resource, set *declarative.ResourceSet) error {
 	switch ch.Action {
 	case declarative.ActionCreate:
-		meta := tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, ManagedByGitOps))
+		meta := tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, managedBy(ctx)))
 		target, err := s.placeVolume(ctx, workspaceID, ch, desired.Volume, set)
 		if err != nil {
 			return err
@@ -2553,7 +2606,7 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 	switch ch.Action {
 	case declarative.ActionCreate:
 		spec := desired.Database
-		meta := tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, ManagedByGitOps))
+		meta := tagSource(ctx, models.SetBuiltin(models.Metadata{}, models.MetaManagedBy, managedBy(ctx)))
 		// Honor the manifest's placement via the shared resolver, mirroring the marketplace install. The logical
 		// database is stamped with the manifest name so databaseViews resolves to this exact database, not "the first
 		// on the instance". The CREATE DDL is deferred for a freshly provisioned instance and runs when it comes up.
@@ -2744,10 +2797,10 @@ func (s *Service) applyApplication(ctx context.Context, workspaceID uint, ch dec
 		}
 		// Reconcile user labels (built-in keys preserved) + annotations from the
 		// manifest, then re-stamp the digest built-in.
-		app.Metadata = models.SetBuiltin(
+		app.Metadata = claim(ctx, models.SetBuiltin(
 			models.MergeUserMetadata(app.Metadata, desired.Metadata.Labels),
 			MetaDigest, spec.Digest,
-		)
+		))
 		app.Annotations = desired.Metadata.Annotations
 		// Container labels round-trip through the manifest; the app service
 		// sanitizes reserved keys (fail-soft) so a manifest can never spoof
@@ -2958,7 +3011,7 @@ func (s *Service) createInput(ctx context.Context, m declarative.Meta, spec *dec
 	// Manifest labels become user metadata (reserved keys are stripped so a
 	// manifest can never spoof provenance); annotations are stored verbatim.
 	md := tagSource(ctx, models.SetBuiltin(models.SanitizeUserMetadata(m.Labels),
-		models.MetaManagedBy, ManagedByGitOps,
+		models.MetaManagedBy, managedBy(ctx),
 		MetaDigest, spec.Digest,
 	))
 	in := application.CreateInput{

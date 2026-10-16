@@ -111,7 +111,11 @@ func (s *Service) SaveDefinition(ctx context.Context, workspaceID uint, in Defin
 	if !run {
 		return def, nil, nil
 	}
-	j, err := s.runDefinition(ctx, def, models.JobSourceGitOps, nil)
+	source := models.JobSourceGitOps
+	if def.Metadata[models.MetaManagedBy] == models.ManagedByApply {
+		source = models.JobSourceApply
+	}
+	j, err := s.runDefinition(ctx, def, source, nil)
 	return def, j, err
 }
 
