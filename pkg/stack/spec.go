@@ -49,10 +49,8 @@ const (
 	gomaConfigDir  = "/etc/goma"
 	gomaConfigFile = gomaConfigDir + "/goma.yml"
 	gomaProviders  = gomaConfigDir + "/providers"
-	// Goma's GOMA_GEOIP_DB default. The name is historical on Goma's side; whatever
-	// MMDB database Miabi provisions is bound here, so the default keeps working
-	// without Miabi having to set the variable and take it away from operators.
-	gomaGeoIPFile = gomaConfigDir + "/GeoLite2-Country.mmdb"
+	// The first directory Goma searches for country.mmdb (or GeoLite2-Country.mmdb).
+	gomaGeoIPDir = gomaConfigDir + "/geoip"
 )
 
 // postgresSpec — the platform database. No published ports, and NOT on the shared proxy network: it holds
@@ -264,12 +262,11 @@ func gatewaySpec(m *Manifest, name, image string) docker.RunSpec {
 			Source: m.gatewayHostConfig, Target: gomaConfigFile, ReadOnly: true,
 		})
 	}
-	// The GeoIP database (optional), read-only, so Goma resolves client countries
-	// for workspace analytics. Only bound when provisioned (EnsureGatewayConfig) —
-	// binding a missing path would make Docker create a directory there.
+	// The GeoIP directory, read-only, so Goma resolves client countries and reloads an updated database.
+	// Only bound once EnsureGatewayConfig has created it, so Docker never creates it as root.
 	if m.gatewayHostGeoIP != "" {
 		spec.Binds = append(spec.Binds, docker.BindMount{
-			Source: m.gatewayHostGeoIP, Target: gomaGeoIPFile, ReadOnly: true,
+			Source: m.gatewayHostGeoIP, Target: gomaGeoIPDir, ReadOnly: true,
 		})
 	}
 	// The operator's own variables — anything their config interpolates, plus

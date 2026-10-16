@@ -100,14 +100,13 @@ gateway:
     maxLen: 1000000
   #
   # Country resolution (the analytics country panels + the geoBlock middleware)
-  # deliberately has NO `geoip.database` here. Goma already looks for
-  # /etc/goma/country.mmdb and then /etc/goma/GeoLite2-Country.mmdb, and this one
-  # file is shared by both install paths, which mount the database under
-  # different names. Naming one would silently disable geo on the other install —
-  # an explicit path is used exactly as given, with no fallback. Provide the file
-  # under either name (Goma ships none: every GeoIP dataset carries license terms
-  # only you can accept) and it is picked up; provide neither and country data is
-  # simply absent, with nothing else affected.
+  # deliberately has NO `geoip.database` here. Goma looks in /etc/goma/geoip/ for
+  # country.mmdb, then GeoLite2-Country.mmdb, and both install paths mount that
+  # directory. Naming one file would disable the other name: an explicit path is
+  # used exactly as given, with no fallback. Goma checks the file every 5 minutes and
+  # loads an updated one without a restart. It ships none (every GeoIP dataset
+  # carries license terms only you can accept); with no file, country data is
+  # simply absent and nothing else is affected.
   providers:
     file:
       enabled: true

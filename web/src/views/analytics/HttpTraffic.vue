@@ -43,7 +43,7 @@ function untracked(total: number, items: Category[]): number {
         <div v-else class="empty-state">
           <h3>{{ $t('analytics.noCountryDataYet') }}</h3>
           <i18n-t keypath="analytics.geoipHint" tag="p">
-            <template #path><code>/etc/miabi/country.mmdb</code></template>
+            <template #path><code>/etc/miabi/geoip/country.mmdb</code></template>
           </i18n-t>
           <p>
             <a :href="GEOIP_DOCS" target="_blank" rel="noopener">{{ $t('analytics.whereToGetOne') }}</a>
@@ -56,7 +56,7 @@ function untracked(total: number, items: Category[]): number {
       <Breakdown :title="$t('analytics.countries')" :items="report.web.top_countries" kind="country" scroll share searchable linked
         :total="report.totals.requests" :active="selected"
         @hover="hovered = $event" @select="toggle"
-        empty-hint="Needs a GeoIP database at /etc/miabi/country.mmdb — see the map above." />
+        empty-hint="Needs a GeoIP database at /etc/miabi/geoip/country.mmdb — see the map above." />
       <Breakdown :title="$t('analytics.httpMethods')" :items="report.web.top_methods" />
 
       <div class="card">

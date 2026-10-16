@@ -98,40 +98,67 @@ func (s *Service) EnsureGatewayConfig(ctx context.Context, m *Manifest) error {
 }
 
 const (
-	// DefaultGeoIPFile is the GeoIP database's name beside goma.yml — what the docs
-	// tell operators to call the file they supply. Provider-neutral, because Miabi
-	// does not choose the provider.
+	// GeoIPDir holds the GeoIP database, beside goma.yml. The directory is what the gateway mounts, not the
+	// file: a single-file bind stays on the original inode, so an update written by rename (geoipupdate, mv)
+	// would never reach the gateway, and Goma could not hot-reload it.
+	GeoIPDir = "geoip"
+	// DefaultGeoIPFile is the name the docs tell operators to give the database they supply. Provider-neutral,
+	// because Miabi does not choose the provider.
 	DefaultGeoIPFile = "country.mmdb"
-	// LegacyGeoIPFile is accepted too. It is MaxMind's own download name, so an
-	// operator following MaxMind's instructions lands on it without thinking — and
-	// earlier Miabi releases downloaded the file under that name.
+	// LegacyGeoIPFile is accepted too. It is MaxMind's own download name, so an operator following MaxMind's
+	// instructions (or running geoipupdate) lands on it without thinking.
 	LegacyGeoIPFile = "GeoLite2-Country.mmdb"
 )
 
-// ensureGeoIP binds a GeoIP database into the gateway when the operator has put one beside goma.yml, so Goma
-// can resolve client countries. Miabi does not fetch one deliberately: every database worth having carries a
-// license only the operator can accept. MIABI_GEOIP=off skips the lookup without moving the file.
+var geoIPFiles = []string{DefaultGeoIPFile, LegacyGeoIPFile}
+
+// ensureGeoIP binds the GeoIP directory into the gateway so Goma can resolve client countries, and reload the
+// database when it changes. It is bound even while empty, so a database dropped in later is picked up without
+// touching the gateway. Miabi fetches none deliberately: every database worth having carries a license only the
+// operator can accept. MIABI_GEOIP=off skips the mount without moving the file.
 func (s *Service) ensureGeoIP(ctx context.Context, m *Manifest) {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("MIABI_GEOIP")), "off") {
 		s.log("GeoIP: disabled (MIABI_GEOIP=off) — analytics runs without country")
 		return
 	}
-	dir := filepath.Dir(s.manifestPath)
-	for _, name := range []string{DefaultGeoIPFile, LegacyGeoIPFile} {
-		p := filepath.Join(dir, name)
-		if _, err := os.Stat(p); err != nil {
-			continue
-		}
-		host := s.hostPathFor(ctx, p)
-		s.log("GeoIP: using %s", host)
-		m.gatewayHostGeoIP = host
+	base := filepath.Dir(s.manifestPath)
+	dir := filepath.Join(base, GeoIPDir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		s.log("GeoIP: cannot create %s (%v) — country data stays off", dir, err)
 		return
 	}
-	// Not an error — analytics works without countries, and plenty of installs never
-	// want them. But name the path anyway: a silent skip is how "the map is empty"
-	// turns into a support thread.
-	s.log("GeoIP: no database at %s — country data stays off (drop a .mmdb there to enable it)",
-		s.hostPathFor(ctx, filepath.Join(dir, DefaultGeoIPFile)))
+	s.moveLegacyGeoIP(base, dir)
+	host := s.hostPathFor(ctx, dir)
+	m.gatewayHostGeoIP = host
+	for _, name := range geoIPFiles {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			s.log("GeoIP: using %s", filepath.Join(host, name))
+			return
+		}
+	}
+	// Not an error — analytics works without countries. But name the path anyway: a silent skip is how
+	// "the map is empty" turns into a support thread.
+	s.log("GeoIP: no database in %s — drop a %s there to enable country data (no restart needed)", host, DefaultGeoIPFile)
+}
+
+// moveLegacyGeoIP moves a database from where earlier releases expected it, beside goma.yml, into the GeoIP
+// directory. One that is already there wins: the operator put it there on purpose.
+func (s *Service) moveLegacyGeoIP(base, dir string) {
+	for _, name := range geoIPFiles {
+		from, to := filepath.Join(base, name), filepath.Join(dir, name)
+		if _, err := os.Stat(from); err != nil {
+			continue
+		}
+		if _, err := os.Stat(to); err == nil {
+			s.log("GeoIP: %s is no longer read — %s takes its place; delete the old file", from, to)
+			continue
+		}
+		if err := os.Rename(from, to); err != nil {
+			s.log("GeoIP: could not move %s to %s (%v) — move it by hand", from, to, err)
+			continue
+		}
+		s.log("GeoIP: moved %s to %s", from, to)
+	}
 }
 
 // validateGatewayConfig runs `goma config check` before the gateway is ever started. Worth the extra container:

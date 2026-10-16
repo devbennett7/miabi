@@ -104,13 +104,6 @@ services:
       # these win, and keep the toggle next to the rest of the stack's wiring.
       GOMA_ANALYTICS_ENABLED: "true"
       GOMA_ANALYTICS_STREAM: ${MIABI_ANALYTICS_STREAM:-goma:analytics}
-      # Country data for the analytics panels + the geoBlock middleware. Goma
-      # ships NO database — every GeoIP dataset carries license terms only you
-      # can accept — so nothing resolves until you mount one (see below), and
-      # until then the country panels stay empty while everything else works.
-      # This path must match the mount below: an explicit GOMA_GEOIP_DB is used
-      # exactly as given, with no fallback to the well-known names.
-      GOMA_GEOIP_DB: /etc/goma/country.mmdb
     ports:
       - "80:80"
       - "443:443"
@@ -118,10 +111,13 @@ services:
       - ./goma.yml:/etc/goma/goma.yml:ro
       - gateway-providers:/etc/goma/providers
       - gateway-certs:/etc/letsencrypt
-      # GeoIP (optional): download a country-level .mmdb — MaxMind GeoLite2,
-      # DB-IP Lite or IP2Location LITE all work — put it next to this file, and
-      # uncomment. Without it the "Top countries" panels stay empty.
-      # - ./country.mmdb:/etc/goma/country.mmdb:ro
+      # GeoIP (optional): download a country-level .mmdb (MaxMind GeoLite2, DB-IP
+      # Lite or IP2Location LITE all work), save it as ./geoip/country.mmdb and
+      # uncomment. Goma ships none: every dataset carries license terms only you can
+      # accept. Mount the directory, not the file: Goma reloads an updated database
+      # without a restart, and a single-file mount never sees a file replaced by
+      # rename. Without it the country panels stay empty.
+      # - ./geoip:/etc/goma/geoip:ro
     # The one service on both, deliberately: `miabi-internal` to reach Miabi and
     # Redis, `miabi-proxy` to reach your apps and the internet for ACME. Being the only
     # bridge is what keeps the shared network ingress-only — traffic crosses into
