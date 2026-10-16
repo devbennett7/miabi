@@ -180,7 +180,7 @@
     "fewer": "Fewer",
     "filterList": "Filter {n} entries…",
     "gatewayOverhead": "Gateway overhead",
-    "geoipHint": "Resolving countries needs a GeoIP database on the gateway. Put one at {path} and restart the gateway.",
+    "geoipHint": "Resolving countries needs a GeoIP database on the gateway. Put one at {path}; it is picked up within 5 minutes, without a restart.",
     "httpMethods": "HTTP methods",
     "human": "Human",
     "humanVsBot": "Human vs bot",

@@ -180,7 +180,7 @@
     "fewer": "Moins",
     "filterList": "Filtrer {n} entrées…",
     "gatewayOverhead": "Surcoût de la passerelle",
-    "geoipHint": "La résolution des pays nécessite une base GeoIP sur la passerelle. Placez-en une dans {path} et redémarrez la passerelle.",
+    "geoipHint": "La résolution des pays nécessite une base GeoIP sur la passerelle. Placez-en une dans {path} ; elle est prise en compte en moins de 5 minutes, sans redémarrage.",
     "httpMethods": "Méthodes HTTP",
     "human": "Humain",
     "humanVsBot": "Humain vs robot",

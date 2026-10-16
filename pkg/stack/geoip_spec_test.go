@@ -18,17 +18,23 @@
 
 package stack
 
-import "testing"
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
-// The GeoIP database is bound into the gateway (at Goma's GOMA_GEOIP_DB default
-// path) only when it has been provisioned — binding a missing host path would
-// make Docker create a directory there.
+// The GeoIP directory is bound into the gateway only once it has been created —
+// binding a missing host path would make Docker create it as root.
 func TestGatewaySpecBindsGeoIPOnlyWhenProvisioned(t *testing.T) {
 	m := Defaults("miabi/miabi:1.4.0")
 
 	bind := func() (source string, readOnly, found bool) {
 		for _, b := range gatewaySpec(m, ContainerGateway, m.Images.Gateway).Binds {
-			if b.Target == gomaGeoIPFile {
+			if b.Target == gomaGeoIPDir {
 				return b.Source, b.ReadOnly, true
 			}
 		}
@@ -39,7 +45,7 @@ func TestGatewaySpecBindsGeoIPOnlyWhenProvisioned(t *testing.T) {
 		t.Fatal("GeoIP database bound when none was provisioned")
 	}
 
-	const host = "/etc/miabi/country.mmdb"
+	const host = "/etc/miabi/geoip"
 	m.gatewayHostGeoIP = host
 	source, readOnly, found := bind()
 	if !found {
@@ -47,5 +53,83 @@ func TestGatewaySpecBindsGeoIPOnlyWhenProvisioned(t *testing.T) {
 	}
 	if source != host || !readOnly {
 		t.Fatalf("GeoIP bind wrong: source=%q readOnly=%v, want %q read-only", source, readOnly, host)
+	}
+}
+
+func geoIPService(t *testing.T) (s *Service, base string, logs *[]string) {
+	t.Helper()
+	base = t.TempDir()
+	var lines []string
+	s = &Service{manifestPath: filepath.Join(base, "miabi.yaml"), log: func(f string, a ...any) {
+		lines = append(lines, fmt.Sprintf(f, a...))
+	}}
+	return s, base, &lines
+}
+
+func mustWrite(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Bound even while empty: a database dropped in later reaches the running gateway with no converge.
+func TestEnsureGeoIPBindsTheDirectoryEvenWhenEmpty(t *testing.T) {
+	s, base, logs := geoIPService(t)
+	m := Defaults("miabi/miabi:1.4.0")
+	s.ensureGeoIP(context.Background(), m)
+
+	dir := filepath.Join(base, GeoIPDir)
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		t.Fatalf("GeoIP directory not created: %v", err)
+	}
+	if m.gatewayHostGeoIP != dir {
+		t.Fatalf("gatewayHostGeoIP = %q, want %q", m.gatewayHostGeoIP, dir)
+	}
+	if !strings.Contains(strings.Join(*logs, "\n"), "no database in "+dir) {
+		t.Errorf("an empty directory was not reported: %v", *logs)
+	}
+}
+
+func TestEnsureGeoIPMovesTheFileFromItsOldPlace(t *testing.T) {
+	s, base, _ := geoIPService(t)
+	mustWrite(t, filepath.Join(base, DefaultGeoIPFile), "db")
+	s.ensureGeoIP(context.Background(), Defaults("miabi/miabi:1.4.0"))
+
+	if _, err := os.Stat(filepath.Join(base, DefaultGeoIPFile)); !os.IsNotExist(err) {
+		t.Error("the old file was left beside goma.yml")
+	}
+	if got := readFile(t, filepath.Join(base, GeoIPDir, DefaultGeoIPFile)); got != "db" {
+		t.Errorf("moved database = %q, want the original", got)
+	}
+}
+
+func TestEnsureGeoIPNeverOverwritesTheDirectorysDatabase(t *testing.T) {
+	s, base, logs := geoIPService(t)
+	if err := os.MkdirAll(filepath.Join(base, GeoIPDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(base, GeoIPDir, DefaultGeoIPFile), "new")
+	mustWrite(t, filepath.Join(base, DefaultGeoIPFile), "old")
+	s.ensureGeoIP(context.Background(), Defaults("miabi/miabi:1.4.0"))
+
+	if got := readFile(t, filepath.Join(base, GeoIPDir, DefaultGeoIPFile)); got != "new" {
+		t.Errorf("the directory's database was replaced by the old file (%q)", got)
+	}
+	if !strings.Contains(strings.Join(*logs, "\n"), "no longer read") {
+		t.Errorf("the stale old file was not reported: %v", *logs)
+	}
+}
+
+func TestEnsureGeoIPOffMountsNothing(t *testing.T) {
+	t.Setenv("MIABI_GEOIP", "off")
+	s, base, _ := geoIPService(t)
+	m := Defaults("miabi/miabi:1.4.0")
+	s.ensureGeoIP(context.Background(), m)
+	if m.gatewayHostGeoIP != "" {
+		t.Errorf("GeoIP bound while MIABI_GEOIP=off: %q", m.gatewayHostGeoIP)
+	}
+	if _, err := os.Stat(filepath.Join(base, GeoIPDir)); !os.IsNotExist(err) {
+		t.Error("GeoIP directory created while MIABI_GEOIP=off")
 	}
 }

@@ -121,9 +121,9 @@ type Manifest struct {
 	// EnsureGatewayConfig. Not serialized: it describes this run's environment — are we in a container, which
 	// host dir is bound — not the desired state, so writing it into miabi.yaml would make the manifest wrong.
 	gatewayHostConfig string `yaml:"-"`
-	// gatewayHostGeoIP is the GeoIP database's host path as the daemon sees it, resolved by EnsureGatewayConfig
-	// when a database is present. Empty when GeoIP is off or unavailable — the gateway mounts no database and
-	// analytics runs without country. Not serialized, for the same reason as gatewayHostConfig.
+	// gatewayHostGeoIP is the GeoIP directory's host path as the daemon sees it, resolved by EnsureGatewayConfig.
+	// Empty when GeoIP is off — the gateway mounts nothing and analytics runs without country. Not serialized,
+	// for the same reason as gatewayHostConfig.
 	gatewayHostGeoIP string `yaml:"-"`
 }
 
