@@ -300,11 +300,22 @@ func (h *NodeHandler) JoinCommand(c *okapi.Context) error {
 		"image":             image,
 		"control_url":       controlURL,
 		"command":           agentRunCommand(image, controlURL, tokenPlaceholder),
+		"script_command":    agentScriptCommand(controlURL, tokenPlaceholder),
 		"upgrade_command":   agentUpgradeCommand(image, controlURL),
 		"token_hint":        "Replace " + tokenPlaceholder + " with the node's join token (shown once at creation; use Regenerate token to mint a new one).",
 		"upgrade_hint":      "Reads the running agent's own token, so it needs no new one. Pulls before it removes anything: a pull that fails after the old agent is gone would leave the node with no way back.",
 		"agent_min_version": updatecheck.MinAgentVersion,
 	})
+}
+
+// agentInstallScript installs the agent on a node host; it reads the control URL and join token
+// from the environment.
+const agentInstallScript = "https://get.miabi.io/agent"
+
+// agentScriptCommand is the one-liner alternative to agentRunCommand.
+func agentScriptCommand(controlURL, token string) string {
+	return "curl -fsSL " + agentInstallScript + " | \\\n" +
+		"  MIABI_CONTROL_URL=" + controlURL + " MIABI_NODE_TOKEN=" + token + " bash"
 }
 
 // agentRunCommand is the docker run an operator pastes on the node host. token is either the

@@ -132,6 +132,7 @@ function openCreate() {
   form.value = blankForm()
   createdToken.value = null
   createdNodeId.value = null
+  joinMethod.value = 'docker'
   showCreate.value = true
 }
 
@@ -200,10 +201,20 @@ function accessLabel(m?: string): string { return ACCESS_LABELS[m || 'agent'] ||
 // happened to open (an internal IP, a port-forward, a proxy that is not the
 // control plane), and the node then silently failed to connect.
 const agentCommand = ref('')
+const scriptCommand = ref('')
+const joinMethod = ref<'docker' | 'script'>('docker')
+const shownCommand = computed(() => (joinMethod.value === 'script' ? scriptCommand.value : agentCommand.value))
 
 // localAgentCommand is the fallback used only when the server's command cannot
 // be fetched. The token is shown exactly once, so an empty dialog would lose it
 // — a command with a best-guess URL is recoverable, a missing one is not.
+function localScriptCommand(token: string): string {
+  return (
+    `curl -fsSL https://get.miabi.io/agent | \\\n` +
+    `  MIABI_CONTROL_URL=${window.location.origin} MIABI_NODE_TOKEN=${token} bash`
+  )
+}
+
 function localAgentCommand(token: string): string {
   return (
     `docker run -d --name miabi-agent --restart unless-stopped \\\n` +
@@ -221,8 +232,12 @@ async function loadAgentCommand(nodeId: number, token: string) {
   try {
     const jc = (await nodesApi.joinCommand(nodeId)).data.data
     agentCommand.value = jc.command.replace('<JOIN_TOKEN>', token)
+    scriptCommand.value = jc.script_command
+      ? jc.script_command.replace('<JOIN_TOKEN>', token)
+      : localScriptCommand(token)
   } catch {
     agentCommand.value = localAgentCommand(token)
+    scriptCommand.value = localScriptCommand(token)
   }
 }
 
@@ -471,7 +486,13 @@ function swarmClass(n: Server): string {
                 <p class="app-banner-text">This is the only time it is shown. Run the agent on the node:</p>
               </div>
             </div>
-            <div class="code-block" style="margin-top: 14px; white-space: pre">{{ agentCommand }}</div>
+            <div class="tabs" style="margin: 14px 0 8px" role="tablist">
+              <button type="button" role="tab" class="tab" :class="{ active: joinMethod === 'docker' }" :aria-selected="joinMethod === 'docker'" @click="joinMethod = 'docker'">
+                <span class="mdi mdi-docker"></span> Docker</button>
+              <button type="button" role="tab" class="tab" :class="{ active: joinMethod === 'script' }" :aria-selected="joinMethod === 'script'" @click="joinMethod = 'script'">
+                <span class="mdi mdi-script-text-outline"></span> Script</button>
+            </div>
+            <div class="code-block" style="white-space: pre">{{ shownCommand }}</div>
             <p class="join-wait" :class="{ 'join-wait--up': createdNodeOnline }">
               <span v-if="createdNodeOnline" class="mdi mdi-check-circle"></span>
               <span v-else class="spinner spinner-sm"></span>
@@ -480,7 +501,7 @@ function swarmClass(n: Server): string {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" @click="copy(createdToken!)">Copy token</button>
-            <button type="button" class="btn btn-secondary" @click="copy(agentCommand)">Copy command</button>
+            <button type="button" class="btn btn-secondary" @click="copy(shownCommand)">Copy command</button>
             <button type="button" class="btn btn-primary" @click="showCreate = false">Done</button>
           </div>
         </template>

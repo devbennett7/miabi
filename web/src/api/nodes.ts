@@ -198,6 +198,8 @@ export interface JoinCommand {
   image: string
   control_url: string
   command: string
+  /** The install-script alternative to command: curl … | bash with the same URL and token. */
+  script_command: string
   token_hint: string
   /** Replaces a running agent in place, carrying its existing token over. */
   upgrade_command: string
