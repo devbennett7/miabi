@@ -542,13 +542,12 @@ var registry = []Descriptor{
 	{
 		Type:        "geoBlock",
 		DisplayName: "Country access policy (GeoIP)",
-		Description: "Allow or deny requests by client country (GeoIP), with optional country-header enrichment for the backend.",
+		Description: "Allow or deny requests by client country (GeoIP).",
 		Category:    CategorySecurity,
 		Fields: []Field{
 			{Key: "action", Label: "Action", Type: FieldEnum, Required: true, Options: []string{"ALLOW", "DENY"}, Default: "ALLOW", Help: "ALLOW = allowlist (only these countries pass); DENY = blocklist."},
 			{Key: "countries", Label: "Countries", Type: FieldStrings, Required: true, Help: "ISO 3166-1 alpha-2 codes, e.g. US, FR, DE."},
 			{Key: "allowUnknown", Label: "Allow unknown country", Type: FieldBool, Default: true, Help: "When the country can't be resolved (no GeoIP database, private IP), allow the request. Off = block (fail-closed)."},
-			{Key: "addCountryHeader", Label: "Add country header", Type: FieldString, Help: "Inject the resolved country to the backend under this header, e.g. X-Country-Code."},
 			{Key: "statusCode", Label: "Status code", Type: FieldInt, Default: 403, Help: "HTTP status returned for a blocked request."},
 			{Key: "message", Label: "Message", Type: FieldString, Help: "Response body for a blocked request."},
 		},

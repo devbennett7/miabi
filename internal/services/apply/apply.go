@@ -1818,6 +1818,7 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 			if derr != nil {
 				plain = mw.Rule
 			}
+			plain = mwcatalog.DropRetired(mw.Type, plain)
 			set.Add(declarative.Resource{
 				APIVersion: declarative.APIVersion, Kind: declarative.KindMiddleware,
 				Metadata: declarative.Meta{Name: mw.Name},
@@ -2346,7 +2347,7 @@ func (s *Service) renderMiddlewareRule(workspaceID uint, spec *declarative.Middl
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	return mwcatalog.DropRetired(spec.Type, out), nil
 }
 
 // renderRuleValues walks a rule and renders every string it finds, at any depth. A middleware rule is

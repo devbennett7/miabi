@@ -85,6 +85,7 @@ func (s *Service) Create(ctx context.Context, workspaceID uint, in Input) (*mode
 	if strings.TrimSpace(in.Type) == "" {
 		return nil, ErrTypeRequired
 	}
+	in.Rule = mwcatalog.DropRetired(in.Type, in.Rule)
 	if err := mwcatalog.Validate(in.Type, in.Rule); err != nil {
 		return nil, err
 	}
@@ -123,6 +124,7 @@ func (s *Service) Update(ctx context.Context, workspaceID, id uint, in Input) (*
 	if in.Type != "" {
 		effectiveType = in.Type
 	}
+	in.Rule = mwcatalog.DropRetired(effectiveType, in.Rule)
 	if err := mwcatalog.Validate(effectiveType, in.Rule); err != nil {
 		return nil, err
 	}
