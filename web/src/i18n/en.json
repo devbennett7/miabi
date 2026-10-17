@@ -1832,7 +1832,9 @@
     "repository": "Repository",
     "repositoryUrl": "Repository URL",
     "subtitle": "Public or private repositories used at build time and by GitOps.",
-    "username": "Username"
+    "username": "Username",
+    "gitopsHint": "Declared by a GitOps project: change or remove it in that project’s repository.",
+    "appliedHint": "Created from a manifest with miabi apply"
   },
   "gitops": {
     "action": {

@@ -124,7 +124,7 @@ func applyRank(k Kind) int {
 		// bind hostnames under them, and so do middlewares: a route naming a chain
 		// is refused until every middleware in it exists.
 		return 0
-	case KindDatabase, KindStack, KindRegistry:
+	case KindDatabase, KindStack, KindRegistry, KindGitRepository:
 		// A registry credential ranks above Secret rather than beside it: its password is typically
 		// "{{ .secrets.x }}", and same-rank changes order by kind name — which would put Registry before
 		// Secret and fail the strict render on a first apply.
@@ -704,6 +704,12 @@ func specFields(r Resource) map[string]string {
 		f["wildcard"] = fmt.Sprintf("%t", r.Domain.Wildcard)
 	case r.CronJob != nil:
 		cronJobFields(r.CronJob, f)
+	case r.GitRepository != nil:
+		g := r.GitRepository
+		f["url"] = g.URL
+		f["auth"] = g.Auth
+		f["username"] = g.Username
+		f["secretRef"] = g.SecretRef
 	case r.GitSource != nil:
 		g := r.GitSource
 		f["repo"] = g.Repo

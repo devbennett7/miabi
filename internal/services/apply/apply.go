@@ -43,6 +43,7 @@ import (
 	configsvc "github.com/miabi-io/miabi/internal/services/config"
 	"github.com/miabi-io/miabi/internal/services/database"
 	"github.com/miabi-io/miabi/internal/services/domain"
+	"github.com/miabi-io/miabi/internal/services/gitrepo"
 	"github.com/miabi-io/miabi/internal/services/job"
 	middlewaresvc "github.com/miabi-io/miabi/internal/services/middleware"
 	"github.com/miabi-io/miabi/internal/services/node"
@@ -122,6 +123,8 @@ type Service struct {
 	unsealer Unsealer
 	// gitSources converges kind: GitSource.
 	gitSources GitSources
+	// gitRepos converges kind: GitRepository.
+	gitRepos *gitrepo.Service
 }
 
 // Unsealer opens sealed secret values with the workspace's sealing keys. Satisfied by the sealing service.
@@ -1831,6 +1834,9 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 	if err := s.snapshotGitSources(workspaceID, set); err != nil {
 		return nil, err
 	}
+	if err := s.snapshotGitRepositories(workspaceID, set); err != nil {
+		return nil, err
+	}
 
 	// Certificates are not a declarable kind, but a route names the one it serves — so the id has to
 	// be mapped back to that name or every custom-TLS route would read as drift.
@@ -2111,6 +2117,8 @@ func (s *Service) execute(ctx context.Context, workspaceID uint, ch declarative.
 		return s.applyJob(ctx, workspaceID, ch, desired)
 	case declarative.KindGitSource:
 		return s.applyGitSource(ctx, workspaceID, ch, desired)
+	case declarative.KindGitRepository:
+		return s.applyGitRepository(ctx, workspaceID, ch, desired)
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedKind, ch.Kind)
 	}

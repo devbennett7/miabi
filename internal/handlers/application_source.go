@@ -72,8 +72,8 @@ func (h *ApplicationHandler) SetSource(c *okapi.Context, req *SetSourceRequest) 
 	if err != nil {
 		return c.AbortNotFound("application not found")
 	}
-	if err := h.requireSourceEditable(c, app); err != nil {
-		return err
+	if err := sourceLock(app); err != nil {
+		return c.AbortWithError(http.StatusConflict, err)
 	}
 	ch, err := h.svc.SetSource(app, application.SourceInput{
 		SourceType:      models.AppSourceType(req.Body.SourceType),
@@ -97,24 +97,25 @@ func (h *ApplicationHandler) SetSource(c *okapi.Context, req *SetSourceRequest) 
 	return c.OK(okapi.M{"success": true, "data": SetSourceResponse{Application: app, Change: ch}})
 }
 
-// requireSourceEditable refuses an interactive source edit on an application whose source is owned
+// sourceLock refuses an interactive source edit on an application whose source is owned
 // elsewhere. A GitOps-managed app would have the change reverted on the next sync, and a
 // marketplace app would lose the upgrade path its template provides — in both cases the edit
 // silently does not stick, which is worse than being told no.
 //
 // It guards the HANDLER only. The GitOps engine and the marketplace installer write through
 // application.Service directly, and must stay able to manage the resources they own.
-func (h *ApplicationHandler) requireSourceEditable(c *okapi.Context, app *models.Application) error {
+//
+// It returns the refusal rather than aborting, because an aborted response returns a nil error and
+// the caller would carry on with the edit.
+func sourceLock(app *models.Application) error {
 	owner, owned := models.SourceOwnedElsewhere(app.Metadata)
 	if !owned {
 		return nil
 	}
 	if owner == models.ManagedByMarketplace {
-		return c.AbortWithError(http.StatusConflict, errors.New(
-			"this application's source is managed by its marketplace template — change it with a template upgrade"))
+		return errors.New("this application's source is managed by its marketplace template — change it with a template upgrade")
 	}
-	return c.AbortWithError(http.StatusConflict, errors.New(
-		"this application's source is managed by GitOps — change it in the Git manifest and sync"))
+	return errors.New("this application's source is managed by GitOps — change it in the Git manifest and sync")
 }
 
 // ResyncPipelineRequest re-reads the repository's pipeline-as-code for a git application.

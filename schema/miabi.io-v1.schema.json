@@ -369,6 +369,29 @@
       },
       "type": "object"
     },
+    "GitRepositorySpec": {
+      "additionalProperties": false,
+      "description": "GitRepositorySpec is a Git credential. SecretRef names the vault entry holding the token (auth token) or private key (auth ssh), so the manifest is safe to commit when that entry is sealed.",
+      "properties": {
+        "auth": {
+          "description": "public|token|ssh (default token with a secretRef, else public)",
+          "type": "string"
+        },
+        "secretRef": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
     "GitSourceSpec": {
       "additionalProperties": false,
       "description": "GitSourceSpec is a GitOps project. The repository is either a public URL (repo) or a stored Git credential named by repository, which supplies the URL too. The webhook secret is generated on create and never declared.",
@@ -916,7 +939,7 @@
           "type": "string"
         },
         "repository": {
-          "description": "Repository names a stored Git credential for a private repo, by its name in the workspace. It is not a declarable kind, so it resolves against credentials that already exist — the same rule spec.registry follows for an image pull.",
+          "description": "Repository names a Git credential for a private repo: a GitRepository in the bundle, or one that already exists in the workspace.",
           "type": "string"
         }
       },
@@ -1090,6 +1113,25 @@
         "properties": {
           "spec": {
             "$ref": "#/$defs/DomainSpec"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "GitRepository"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/GitRepositorySpec"
           }
         }
       }
@@ -1299,6 +1341,7 @@
         "CronJob",
         "Database",
         "Domain",
+        "GitRepository",
         "GitSource",
         "Job",
         "Middleware",

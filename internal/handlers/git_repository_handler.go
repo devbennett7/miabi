@@ -21,6 +21,7 @@ package handlers
 
 import (
 	"errors"
+	"net/http"
 	"strconv"
 
 	"github.com/jkaninda/okapi"
@@ -104,6 +105,9 @@ func (h *GitRepositoryHandler) Update(c *okapi.Context, req *UpdateGitRepoReques
 		return c.AbortBadRequest("invalid git repository id")
 	}
 	wsID := middlewares.WorkspaceID(c)
+	if err := h.gitopsConflict(wsID, id); err != nil {
+		return c.AbortWithError(http.StatusConflict, err)
+	}
 	g, err := h.svc.Update(wsID, id, gitrepo.Input{
 		Name: req.Body.Name, DisplayName: req.Body.DisplayName, URL: req.Body.URL,
 		AuthType: models.GitAuthType(req.Body.AuthType),
@@ -122,6 +126,9 @@ func (h *GitRepositoryHandler) Delete(c *okapi.Context) error {
 		return c.AbortBadRequest("invalid git repository id")
 	}
 	wsID := middlewares.WorkspaceID(c)
+	if err := h.gitopsConflict(wsID, id); err != nil {
+		return c.AbortWithError(http.StatusConflict, err)
+	}
 	if err := h.svc.Delete(wsID, id); err != nil {
 		return h.mapErr(c, err)
 	}
@@ -150,6 +157,16 @@ func (h *GitRepositoryHandler) Test(c *okapi.Context) error {
 		return message(c, "connection succeeded")
 	}
 	return ok(c, g)
+}
+
+// gitopsConflict reports why a credential a GitOps project declares can't be edited or deleted
+// here: the project's next sync would undo it. Nil when it is editable, or doesn't exist.
+func (h *GitRepositoryHandler) gitopsConflict(wsID, id uint) error {
+	g, err := h.svc.Get(wsID, id)
+	if err != nil || g.Metadata[models.MetaManagedBy] != models.ManagedByGitOps {
+		return nil
+	}
+	return errors.New("this credential is declared by a GitOps project — change or remove it in that project's repository")
 }
 
 func (h *GitRepositoryHandler) id(c *okapi.Context) (uint, error) {

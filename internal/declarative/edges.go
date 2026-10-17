@@ -47,6 +47,8 @@ const (
 	EdgeSchedule EdgeType = "schedule"
 	// EdgeRun is Job -> Application (spec.app).
 	EdgeRun EdgeType = "run"
+	// EdgeRepository is Application or GitSource -> GitRepository (the credential it clones with).
+	EdgeRepository EdgeType = "repository"
 )
 
 // Edge is a directed dependency from one resource to another, keyed by Resource
@@ -109,6 +111,9 @@ func Edges(set *ResourceSet) []Edge {
 			// skips targets outside the set, so referencing a workspace credential
 			// created elsewhere leaves no dangling edge.
 			add(KindApplication, name, KindRegistry, a.Registry, EdgeRegistry)
+			if a.Source != nil {
+				add(KindApplication, name, KindGitRepository, a.Source.Repository, EdgeRepository)
+			}
 			for _, v := range a.Env {
 				for _, m := range tmplRef.FindAllStringSubmatch(v, -1) {
 					switch m[1] {
@@ -122,6 +127,11 @@ func Edges(set *ResourceSet) []Edge {
 					}
 				}
 			}
+		case r.GitSource != nil:
+			add(KindGitSource, name, KindGitRepository, r.GitSource.Repository, EdgeRepository)
+		case r.GitRepository != nil:
+			add(KindGitRepository, name, KindSecret, r.GitRepository.SecretRef, EdgeSecret)
+			add(KindGitRepository, name, KindSealedSecret, r.GitRepository.SecretRef, EdgeSecret)
 		case r.CronJob != nil:
 			add(KindCronJob, name, KindApplication, r.CronJob.App, EdgeSchedule)
 			add(KindCronJob, name, KindRegistry, r.CronJob.Registry, EdgeRegistry)

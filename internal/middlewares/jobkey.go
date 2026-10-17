@@ -20,6 +20,7 @@
 package middlewares
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 
@@ -38,13 +39,16 @@ type AppRefResolver interface {
 	IDByRef(workspaceID uint, ref string) (uint, error)
 }
 
-func confineEphemeralKey(c *okapi.Context, boundApp uint, apps AppIDResolver, workspaceID uint) error {
+// ephemeralKeyRefusal says why a job credential may not make this request, or nil when it may. It
+// returns the refusal instead of aborting: an aborted response returns a nil error, and the caller
+// would go on to c.Next().
+func ephemeralKeyRefusal(c *okapi.Context, boundApp uint, apps AppIDResolver, workspaceID uint) error {
 	if boundApp == 0 {
-		return c.AbortForbidden("this job credential cannot be used on the API")
+		return errors.New("this job credential cannot be used on the API")
 	}
 	ref := strings.TrimSpace(c.Param("appID"))
 	if ref == "" {
-		return errJobKeyScope(c)
+		return errJobKeyScope
 	}
 	got, ok := resolveAppRef(ref, apps)
 	// A job key is workspace-bound, so a name resolves against its own workspace.
@@ -54,14 +58,12 @@ func confineEphemeralKey(c *okapi.Context, boundApp uint, apps AppIDResolver, wo
 		}
 	}
 	if !ok || got != boundApp {
-		return errJobKeyScope(c)
+		return errJobKeyScope
 	}
 	return nil
 }
 
-func errJobKeyScope(c *okapi.Context) error {
-	return c.AbortForbidden("this job credential may only act on the application it was issued for")
-}
+var errJobKeyScope = errors.New("this job credential may only act on the application it was issued for")
 
 func resolveAppRef(ref string, apps AppIDResolver) (uint, bool) {
 	if id, err := strconv.Atoi(ref); err == nil {

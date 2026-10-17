@@ -11,16 +11,38 @@
 #
 # Apply with:  miabi apply -f gitsources.yaml
 ---
+# The clone token lives in the vault. Seal it (`miabi secrets seal`) and use
+# kind: SealedSecret instead to commit this file.
+apiVersion: miabi.io/v1
+kind: Secret
+metadata:
+  name: github-token
+spec:
+  value: ghp_replace_me
+---
+# A Git credential. It never holds the token itself, only the vault entry to
+# read it from at every clone, so rotating the Secret rotates the credential.
+# The examples repository is public; a token is what a private one (or your
+# own fork) needs.
+apiVersion: miabi.io/v1
+kind: GitRepository
+metadata:
+  name: miabi-examples
+spec:
+  url: https://github.com/miabi-io/examples.git
+  auth: token            # public | token | ssh
+  secretRef: github-token
+---
 apiVersion: miabi.io/v1
 kind: GitSource
 metadata:
-  name: shop
+  name: full-stack
 spec:
-  # A stored Git credential (Settings → Git repositories) supplies the URL and
-  # the clone token. Use repo: <url> instead for a public repository.
-  repository: gitea-examples
+  # The credential supplies the URL and the clone token. Use repo: <url> instead
+  # for a public repository.
+  repository: miabi-examples
   ref: main
-  path: gitops/shop
+  path: gitops/full-stack
   syncPolicy: auto
   prune: true
   requireSealedSecrets: true

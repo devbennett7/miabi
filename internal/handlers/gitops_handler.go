@@ -130,8 +130,8 @@ func (h *GitOpsHandler) Update(c *okapi.Context, req *UpdateGitSourceRequest) er
 		return c.AbortBadRequest("invalid git source id")
 	}
 	wsID := middlewares.WorkspaceID(c)
-	if err := h.refuseNested(c, wsID, id); err != nil {
-		return err
+	if err := h.nestedConflict(wsID, id); err != nil {
+		return c.AbortWithError(http.StatusConflict, err)
 	}
 	src, err := h.svc.Update(wsID, id, gitops.Input{
 		RepoURL: req.Body.RepoURL, Ref: req.Body.Ref, Path: req.Body.Path,
@@ -152,8 +152,8 @@ func (h *GitOpsHandler) Delete(c *okapi.Context) error {
 		return c.AbortBadRequest("invalid git source id")
 	}
 	wsID := middlewares.WorkspaceID(c)
-	if err := h.refuseNested(c, wsID, id); err != nil {
-		return err
+	if err := h.nestedConflict(wsID, id); err != nil {
+		return c.AbortWithError(http.StatusConflict, err)
 	}
 	// Opt-in cascade: ?cascade=true also tears down the resources this project
 	// created. Default keeps them running.
@@ -174,14 +174,11 @@ func (h *GitOpsHandler) Delete(c *okapi.Context) error {
 	return ok(c, GitOpsDeleteResult{Message: msg, Teardown: teardown})
 }
 
-// refuseNested blocks editing or deleting a project another project declares: the parent's next
-// sync would undo it, so the change belongs in the parent's repository.
-func (h *GitOpsHandler) refuseNested(c *okapi.Context, wsID, id uint) error {
+// nestedConflict reports why a project another project declares can't be edited or deleted here:
+// the parent's next sync would undo it. Nil when the project is editable, or doesn't exist.
+func (h *GitOpsHandler) nestedConflict(wsID, id uint) error {
 	src, err := h.svc.Get(wsID, id)
-	if err != nil {
-		return c.AbortNotFound("git source not found")
-	}
-	if src.Metadata[models.MetaManagedBy] != models.ManagedByGitOps {
+	if err != nil || src.Metadata[models.MetaManagedBy] != models.ManagedByGitOps {
 		return nil
 	}
 	parent := "another GitOps project"
@@ -190,8 +187,7 @@ func (h *GitOpsHandler) refuseNested(c *okapi.Context, wsID, id uint) error {
 			parent = fmt.Sprintf("the GitOps project %q", p.Name)
 		}
 	}
-	return c.AbortWithError(http.StatusConflict, fmt.Errorf(
-		"this project is declared by %s — change or remove it in that project's repository", parent))
+	return fmt.Errorf("this project is declared by %s — change or remove it in that project's repository", parent)
 }
 
 // Sync reconciles a source now.

@@ -64,21 +64,22 @@ func JSONSchema() ([]byte, error) {
 	}
 
 	specFor := map[Kind]any{
-		KindApplication:  ApplicationSpec{},
-		KindStack:        StackSpec{},
-		KindDatabase:     DatabaseSpec{},
-		KindVolume:       VolumeSpec{},
-		KindRoute:        RouteSpec{},
-		KindSecret:       SecretSpec{},
-		KindSealedSecret: SealedSecretSpec{},
-		KindDomain:       DomainSpec{},
-		KindRegistry:     RegistrySpec{},
-		KindProject:      ProjectSpec{},
-		KindConfig:       ConfigSpec{},
-		KindMiddleware:   MiddlewareSpec{},
-		KindCronJob:      CronJobSpec{},
-		KindJob:          JobSpec{},
-		KindGitSource:    GitSourceSpec{},
+		KindApplication:   ApplicationSpec{},
+		KindStack:         StackSpec{},
+		KindDatabase:      DatabaseSpec{},
+		KindVolume:        VolumeSpec{},
+		KindRoute:         RouteSpec{},
+		KindSecret:        SecretSpec{},
+		KindSealedSecret:  SealedSecretSpec{},
+		KindDomain:        DomainSpec{},
+		KindRegistry:      RegistrySpec{},
+		KindProject:       ProjectSpec{},
+		KindConfig:        ConfigSpec{},
+		KindMiddleware:    MiddlewareSpec{},
+		KindCronJob:       CronJobSpec{},
+		KindJob:           JobSpec{},
+		KindGitSource:     GitSourceSpec{},
+		KindGitRepository: GitRepositorySpec{},
 	}
 	branches := make([]any, 0, len(kinds))
 	for _, k := range kinds {

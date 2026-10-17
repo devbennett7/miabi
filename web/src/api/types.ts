@@ -1038,6 +1038,8 @@ export interface GitRepository {
   /** Name of the workspace Secret holding the token or key, when the credential
    *  references the vault instead of storing its own copy. */
   secret_ref?: string
+  /** miabi.io/managed-by is "gitops" or "apply" when a manifest declares the credential. */
+  metadata?: Record<string, string>
   /** Result of the last reachability check (`git ls-remote` with this
    *  credential). Recorded when the repository is created, when its URL or
    *  credential changes, and on an explicit test — never on a read, so the list

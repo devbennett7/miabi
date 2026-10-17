@@ -256,6 +256,12 @@ func parseNode(node *yaml.Node) ([]Resource, error) {
 			return nil, specErr(head.Kind, meta.Name, err)
 		}
 		r.Domain = &s
+	case KindGitRepository:
+		var s GitRepositorySpec
+		if err := decodeSpec(&head.Spec, &s); err != nil {
+			return nil, specErr(head.Kind, meta.Name, err)
+		}
+		r.GitRepository = &s
 	case KindGitSource:
 		var s GitSourceSpec
 		if err := decodeSpec(&head.Spec, &s); err != nil {

@@ -74,3 +74,74 @@ spec: { image: nginx }
 		t.Fatalf("last change = %s, want the GitSource", last.Kind)
 	}
 }
+
+func gitRepositoryDoc(spec string) string {
+	return "apiVersion: miabi.io/v1\nkind: GitRepository\nmetadata: { name: gitea }\nspec:\n" + spec
+}
+
+func TestGitRepositoryNormalizes(t *testing.T) {
+	set, err := d.Parse([]byte(gitRepositoryDoc("  url: https://git.example.com/shop/\n  secretRef: gitea-token\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _ := set.Get("GitRepository/gitea")
+	if g := r.GitRepository; g.URL != "https://git.example.com/shop.git" || g.Auth != "token" {
+		t.Fatalf("normalized = %+v, want a .git URL and token auth", g)
+	}
+	set, err = d.Parse([]byte(gitRepositoryDoc("  url: https://github.com/miabi-io/examples.git\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := set.Get("GitRepository/gitea"); r.GitRepository.Auth != "public" {
+		t.Fatalf("auth without a secretRef = %q, want public", r.GitRepository.Auth)
+	}
+}
+
+func TestGitRepositoryValidation(t *testing.T) {
+	cases := map[string]string{
+		"no url":             "  secretRef: tok\n",
+		"bad auth":           "  url: https://x/y.git\n  auth: basic\n  secretRef: tok\n",
+		"public with secret": "  url: https://x/y.git\n  auth: public\n  secretRef: tok\n",
+		"ssh without secret": "  url: git@x:y.git\n  auth: ssh\n",
+		"inline token":       "  url: https://x/y.git\n  token: abc\n",
+	}
+	for name, spec := range cases {
+		if _, err := d.Parse([]byte(gitRepositoryDoc(spec))); err == nil {
+			t.Errorf("%s: parsed, want an error", name)
+		}
+	}
+}
+
+func TestGitRepositoryComesBeforeItsUsers(t *testing.T) {
+	bundle := gitRepositoryDoc("  url: https://x/y.git\n  secretRef: tok\n") + `---
+apiVersion: miabi.io/v1
+kind: Secret
+metadata: { name: tok }
+spec: { value: ghp_example }
+---
+` + gitSourceDoc("  repository: gitea\n")
+	desired, err := d.Parse([]byte(bundle))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := d.BuildPlan(desired, d.NewResourceSet(), d.PlanOptions{})
+	pos := map[d.Kind]int{}
+	for i, c := range plan.Changes {
+		pos[c.Kind] = i
+	}
+	if !(pos[d.KindSecret] < pos[d.KindGitRepository] && pos[d.KindGitRepository] < pos[d.KindGitSource]) {
+		t.Fatalf("order = %+v, want secret, credential, then project", plan.Changes)
+	}
+	edges := d.Edges(desired)
+	want := map[string]bool{"GitSource/shop->GitRepository/gitea": false, "GitRepository/gitea->Secret/tok": false}
+	for _, e := range edges {
+		if _, ok := want[e.From+"->"+e.To]; ok {
+			want[e.From+"->"+e.To] = true
+		}
+	}
+	for k, seen := range want {
+		if !seen {
+			t.Errorf("missing edge %s", k)
+		}
+	}
+}
