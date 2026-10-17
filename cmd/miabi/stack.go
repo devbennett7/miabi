@@ -23,6 +23,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -33,7 +34,7 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack/stackcmd"
 )
 
-// registerStackCommands wires `install|update|restart|status|uninstall` onto the server image.
+// registerStackCommands wires `install|upgrade|restart|status|db-backup|uninstall` and friends onto the server image.
 //
 // The `miabi` CLI is the normal way to drive a host, and it does strictly more. This path exists
 // for the operator who cannot or will not put a binary in /usr/local/bin: the image runs as uid
@@ -87,6 +88,20 @@ func registerStackCommands(cli *okapicli.CLI) {
 
 	cli.Command("status", "Show the installed stack against its manifest", runStatus).
 		String("file", "f", "", "Manifest path")
+
+	// `restore` is already disaster recovery from a bucket; these are the local database dumps.
+	cli.Command("db-backup", "Dump the platform database to a local file", runDBBackup).
+		String("dir", "", "", "Directory to write to (default: backups/ beside the manifest)").
+		String("file", "f", "", "Manifest path")
+
+	cli.Command("db-backups", "List the local database dumps", runDBBackups).
+		String("dir", "", "", "Directory to list (default: backups/ beside the manifest)").
+		String("file", "f", "", "Manifest path")
+
+	cli.Command("db-restore", "Replace the platform database with a local dump", runDBRestore).
+		Bool("force", "", false, "Restore a dump taken by a newer Miabi than the one running").
+		String("file", "f", "", "Manifest path").
+		Bool("yes", "y", false, "Do not prompt")
 
 	cli.Command("uninstall", "Remove the Miabi stack's containers (volumes are KEPT unless --volumes)", runUninstall).
 		String("file", "f", "", "Manifest path").
@@ -259,4 +274,63 @@ func runUninstall(cmd *okapicli.Command) error {
 			}
 			return nil
 		})
+}
+
+func runDBBackup(cmd *okapicli.Command) error {
+	svc, dc, err := stackService(cmd)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dc.Close() }()
+
+	ctx, cancel := stackCtx()
+	defer cancel()
+	_, err = stackcmd.Backup(ctx, svc, manifestPath(cmd), stackcmd.BackupOptions{Dir: cmd.GetString("dir")}, imageUI{})
+	return err
+}
+
+func runDBBackups(cmd *okapicli.Command) error {
+	dir := cmd.GetString("dir")
+	if dir == "" {
+		dir = stackcmd.BackupDir(manifestPath(cmd))
+	}
+	all, err := stackcmd.ListBackups(dir)
+	if err != nil {
+		return err
+	}
+	if len(all) == 0 {
+		fmt.Printf("No database dumps in %s.\n", dir)
+		return nil
+	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+	_, _ = fmt.Fprintln(w, "NAME\tVERSION\tLABEL\tTAKEN\tSIZE")
+	for _, b := range all {
+		label := b.Label
+		if label == "" {
+			label = "—"
+		}
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\n", filepath.Base(b.Path), b.Version, label,
+			b.Taken.Local().Format(time.DateTime), b.Size)
+	}
+	return w.Flush()
+}
+
+func runDBRestore(cmd *okapicli.Command) error {
+	args := cmd.Args()
+	if len(args) != 1 {
+		return fmt.Errorf("usage: db-restore <dump> — db-backups lists them")
+	}
+	svc, dc, err := stackService(cmd)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dc.Close() }()
+
+	ctx, cancel := stackCtx()
+	defer cancel()
+	return stackcmd.Restore(ctx, svc, manifestPath(cmd), stackcmd.RestoreOptions{
+		File:  args[0],
+		Yes:   cmd.GetBool("yes"),
+		Force: cmd.GetBool("force"),
+	}, imageUI{})
 }
