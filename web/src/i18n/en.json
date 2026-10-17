@@ -387,7 +387,9 @@
       "noCacheHint": "Rebuilds every layer for this deploy only. Slower — use it when a cached layer has gone stale.",
       "pipelineHint": "Miabi runs the steps in {path} on {ref}; the deploy step rolls out the image they build. You'll follow the run's logs, not a deployment's.",
       "pipelineTitle": "Deploys run the “{name}” pipeline.",
-      "sync": "sync"
+      "sync": "sync",
+      "applyTitle": "Applied from a manifest.",
+      "applyHint": "A manual redeploy is kept until the next {cmd} of its manifest."
     },
     "deployment": "Deployment",
     "deploymentStrategy": "Deployment strategy",
@@ -647,7 +649,8 @@
       "templateImageWarning": "Changing the image here means it no longer matches the template, and a future template upgrade may overwrite it.",
       "waitHealthyHint": "Deploys wait for the container to report healthy before going live.",
       "imageProbeHint": "Uses the image's own HEALTHCHECK, if it declares one. Deploys don't wait for it.",
-      "noneProbeHint": "No check at all: the image's own HEALTHCHECK is turned off too. Use it for workers and schedulers that serve no HTTP."
+      "noneProbeHint": "No check at all: the image's own HEALTHCHECK is turned off too. Use it for workers and schedulers that serve no HTTP.",
+      "applyHint": "Applied from a manifest — the next {cmd} overwrites changes made here."
     },
     "shell": "Shell",
     "source": {
@@ -709,7 +712,8 @@
     "volumes": "Volumes",
     "when": "When",
     "zeroUnlimited": "0 = unlimited.",
-    "volumesHidden": "{n} volume(s) in another location or on another node are hidden — an app mounts node-local volumes from its own node only."
+    "volumesHidden": "{n} volume(s) in another location or on another node are hidden — an app mounts node-local volumes from its own node only.",
+    "managedByApply": "Applied from a manifest with miabi apply"
   },
   "apps": {
     "browseMarketplace": "Browse the Marketplace",
@@ -1995,7 +1999,8 @@
       "once": "once",
       "onRelease": "on every release"
     },
-    "attempt": "attempt {n}"
+    "attempt": "attempt {n}",
+    "applyHint": "Applied from a manifest: the next miabi apply overwrites changes made here."
   },
   "ldap": {
     "testConnection": "Test connection"

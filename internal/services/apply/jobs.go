@@ -110,7 +110,7 @@ func securitySpec(runAsUser string) *declarative.SecuritySpec {
 // spoof provenance through its own labels.
 func jobMetadata(ctx context.Context, desired declarative.Resource) models.Metadata {
 	return tagSource(ctx, models.SetBuiltin(models.SanitizeUserMetadata(desired.Metadata.Labels),
-		models.MetaManagedBy, ManagedByGitOps))
+		models.MetaManagedBy, managedBy(ctx)))
 }
 
 func (s *Service) runRegistry(workspaceID uint, kind, name, registry string) (*uint, error) {
