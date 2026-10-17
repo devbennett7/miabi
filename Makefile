@@ -6,7 +6,9 @@ BUILD_DATE  ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS     := -X $(PKG)/internal/config.Version=$(VERSION) -X $(PKG)/internal/config.CommitID=$(COMMIT) -X $(PKG)/internal/config.BuildDate=$(BUILD_DATE)
 
 LICENSE_PUBLIC_KEY ?= $(shell cat ../license-public.key 2>/dev/null)
-MIABI_LDFLAGS := $(LDFLAGS) -X $(PKG)/internal/enterprise.embeddedPublicKey=$(LICENSE_PUBLIC_KEY)
+# GOMA_VERSION pins the gateway a build provisions; unset keeps pkg/bundled's fallback.
+GOMA_VERSION ?=
+MIABI_LDFLAGS := $(LDFLAGS) -X $(PKG)/internal/enterprise.embeddedPublicKey=$(LICENSE_PUBLIC_KEY) -X $(PKG)/pkg/bundled.gatewayVersion=$(GOMA_VERSION)
 
 WEB_DIR := web
 EMBED_WEB_DIR := internal/web/dist
@@ -74,12 +76,12 @@ tidy: ## Sync go.mod / go.sum
 
 docker: ## Build the Docker image
 	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) \
-		--build-arg GO_TAGS=enterprise --build-arg LICENSE_PUBLIC_KEY=$(LICENSE_PUBLIC_KEY) \
+		--build-arg GO_TAGS=enterprise --build-arg LICENSE_PUBLIC_KEY=$(LICENSE_PUBLIC_KEY) --build-arg GOMA_VERSION=$(GOMA_VERSION) \
 		-f docker/Dockerfile -t miabi:$(VERSION) .
 
 docker-rootless: ## Build the Docker image
 	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) \
-		--build-arg GO_TAGS=enterprise --build-arg LICENSE_PUBLIC_KEY=$(LICENSE_PUBLIC_KEY) \
+		--build-arg GO_TAGS=enterprise --build-arg LICENSE_PUBLIC_KEY=$(LICENSE_PUBLIC_KEY) --build-arg GOMA_VERSION=$(GOMA_VERSION) \
 		-f docker/Dockerfile.rootless -t miabi:$(VERSION)-rootless .
 
 compose-up: ## Start local dev stack (builds app + Postgres + Redis)

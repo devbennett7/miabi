@@ -41,6 +41,8 @@ builds:
       - -X github.com/miabi-io/miabi/internal/config.BuildDate={{ .CommitDate }}
       # Baked license-signing key; empty is a harmless no-op (stays Community).
       - -X github.com/miabi-io/miabi/internal/enterprise.embeddedPublicKey={{ .Env.LICENSE_PUBLIC_KEY }}
+      # The Goma Gateway release to provision, resolved from versions.miabi.io by the workflow.
+      - -X github.com/miabi-io/miabi/pkg/bundled.gatewayVersion={{ index .Env "GOMA_VERSION" }}
     goos:
       - linux
       - darwin

@@ -86,7 +86,9 @@ services:
   # providers volume. goma.yml here interpolates the domains + Redis password
   # from this service's environment.
   gateway:
-    image: jkaninda/goma-gateway:1.1.0
+    # Pin the version Miabi is tested with: "image" in
+    # https://versions.miabi.io/v1/gateway/latest.json
+    image: jkaninda/goma-gateway:latest
     labels:
       io.miabi.part-of: miabi
       io.miabi.role: gateway

@@ -23,6 +23,7 @@
 package platformimage
 
 import (
+	"github.com/miabi-io/miabi/pkg/bundled"
 	"strings"
 )
 
@@ -85,7 +86,7 @@ func baseCatalog() []Entry {
 		{KeyBackupMongoDB, "MongoDB backup (mongodb-bkup)", "Backups", "jkaninda/mongodb-bkup:latest", "Backup/restore tool for MongoDB"},
 		{KeyBackupLibSQL, "libSQL backup (libsql-bkup)", "Backups", "jkaninda/libsql-bkup:latest", "Backup/restore tool for libSQL"},
 		{KeyBackupVolume, "Volume backup (volume-bkup)", "Backups", "jkaninda/volume-bkup:latest", "Backup/restore tool for Docker volumes"},
-		{KeyGoma, "Goma Gateway", "Gateway", "jkaninda/goma-gateway:1.1.0", "Reverse proxy / edge gateway"},
+		{KeyGoma, "Goma Gateway", "Gateway", bundled.GatewayImage(), "Reverse proxy / edge gateway"},
 		{KeyRelay, "Port-forward relay (socat)", "Internal", "alpine/socat:latest", "Bridges on-demand database port-forwards"},
 		{KeyRegistry, "Docker registry (distribution)", "Internal", "registry:3", "Built-in multi-tenant container registry"},
 		{KeyHelper, "Volume helper (busybox)", "Internal", "busybox:1.36", "Seeds config/data volumes"},
