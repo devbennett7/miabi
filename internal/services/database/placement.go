@@ -39,8 +39,9 @@ const (
 	PlacementAuto Placement = "auto"
 	// PlacementDedicated always provisions a fresh instance for the dependency.
 	PlacementDedicated Placement = "dedicated"
-	// PlacementShared requires an existing running compatible instance and creates
-	// a dedicated logical database on it; it never provisions a new instance.
+	// PlacementShared creates a dedicated logical database on an existing running instance of the
+	// engine. It provisions an instance only when the running ones are all on another version than
+	// the one declared: a database never silently runs on a version it did not ask for.
 	PlacementShared Placement = "shared"
 )
 
@@ -69,14 +70,16 @@ func (s *Service) ResolveDependency(ctx context.Context, workspaceID, serverID, 
 		return s.provisionDedicated(ctx, workspaceID, base, declName, engine, version, serverID, res, meta)
 
 	case placement == PlacementShared:
-		inst := s.findReusable(workspaceID, engine, serverID)
-		if inst == nil {
+		if inst := s.findReusable(workspaceID, engine, version, serverID); inst != nil {
+			return s.logicalOn(ctx, workspaceID, inst, base, declName, meta)
+		}
+		if s.findReusable(workspaceID, engine, "", serverID) == nil {
 			return nil, nil, ConnectionInfo{}, false, ErrNoSharedInstance
 		}
-		return s.logicalOn(ctx, workspaceID, inst, base, declName, meta)
+		return s.provisionDedicated(ctx, workspaceID, base, declName, engine, version, serverID, res, meta)
 
 	default: // PlacementAuto
-		if inst := s.findReusable(workspaceID, engine, serverID); inst != nil {
+		if inst := s.findReusable(workspaceID, engine, version, serverID); inst != nil {
 			return s.logicalOn(ctx, workspaceID, inst, base, declName, meta)
 		}
 		return s.provisionDedicated(ctx, workspaceID, base, declName, engine, version, serverID, res, meta)
@@ -156,27 +159,31 @@ func (s *Service) tagLogical(d *models.Database, declName string, meta models.Me
 }
 
 // FindReusableInstance returns the running instance a shared/auto placement would
-// reuse for engine, or nil. Exposed so a caller can pre-resolve a dependency's
+// reuse for engine and version, or nil. Exposed so a caller can pre-resolve a dependency's
 // target node without performing the placement.
 // A non-zero clusterID keeps the search inside that location.
-func (s *Service) FindReusableInstance(workspaceID uint, engine models.DBEngine, clusterID uint) *models.DatabaseInstance {
-	return s.reusableIn(workspaceID, engine, clusterID, clusterID != 0)
+func (s *Service) FindReusableInstance(workspaceID uint, engine models.DBEngine, version string, clusterID uint) *models.DatabaseInstance {
+	return s.reusableIn(workspaceID, engine, version, clusterID, clusterID != 0)
 }
 
 // findReusable picks a running instance of engine, in the location of serverID when one is given:
-// private networks don't span locations.
-func (s *Service) findReusable(workspaceID uint, engine models.DBEngine, serverID uint) *models.DatabaseInstance {
+// private networks don't span locations. An empty version matches any.
+func (s *Service) findReusable(workspaceID uint, engine models.DBEngine, version string, serverID uint) *models.DatabaseInstance {
 	cluster, scoped := s.clusterOfServer(serverID)
-	return s.reusableIn(workspaceID, engine, cluster, scoped)
+	return s.reusableIn(workspaceID, engine, version, cluster, scoped)
 }
 
-func (s *Service) reusableIn(workspaceID uint, engine models.DBEngine, cluster uint, scoped bool) *models.DatabaseInstance {
+func (s *Service) reusableIn(workspaceID uint, engine models.DBEngine, version string, cluster uint, scoped bool) *models.DatabaseInstance {
 	list, err := s.List(workspaceID)
 	if err != nil {
 		return nil
 	}
+	version = strings.TrimSpace(version)
 	for i := range list {
 		if list[i].Engine != engine || list[i].Status != models.DBStatusRunning {
+			continue
+		}
+		if version != "" && list[i].Version != version {
 			continue
 		}
 		if scoped && list[i].ClusterID != cluster {

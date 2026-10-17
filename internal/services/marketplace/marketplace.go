@@ -792,7 +792,7 @@ func (s *Service) installNode(workspaceID uint, m *manifest.Manifest, in Install
 			(placement == manifest.PlacementAuto && models.EngineSupportsLogicalDatabases(engine) &&
 				databaseResources(d) == (database.Resources{}))
 		if reuses {
-			if inst := s.dbs.FindReusableInstance(workspaceID, engine, clusterID); inst != nil {
+			if inst := s.dbs.FindReusableInstance(workspaceID, engine, d.Version, clusterID); inst != nil {
 				return inst.ServerID, nil
 			}
 		}
