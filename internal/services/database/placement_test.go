@@ -145,13 +145,36 @@ func TestFindReusableInstanceStaysInTheLocation(t *testing.T) {
 		t.Fatalf("seed instances: %v", err)
 	}
 
-	if got := s.FindReusableInstance(ws, models.DBEnginePostgres, 2); got == nil || got.ID != 2 {
+	if got := s.FindReusableInstance(ws, models.DBEnginePostgres, "", 2); got == nil || got.ID != 2 {
 		t.Errorf("location 2 reused %v, want pg-east", got)
 	}
-	if got := s.FindReusableInstance(ws, models.DBEnginePostgres, 3); got != nil {
+	if got := s.FindReusableInstance(ws, models.DBEnginePostgres, "", 3); got != nil {
 		t.Errorf("a location with no postgres reused %q", got.Name)
 	}
-	if got := s.FindReusableInstance(ws, models.DBEnginePostgres, 0); got == nil {
+	if got := s.FindReusableInstance(ws, models.DBEnginePostgres, "", 0); got == nil {
 		t.Error("an unscoped search found nothing")
+	}
+}
+
+// A declared version is part of compatibility: a database never lands on an instance running another one.
+func TestFindReusableInstanceMatchesTheVersion(t *testing.T) {
+	s, db := newDeclNameSvc(t)
+	const ws = uint(1)
+	running, pg := string(models.DBStatusRunning), string(models.DBEnginePostgres)
+	if err := db.Create(&[]dbInstRow{
+		{ID: 1, UID: "pg-16", WorkspaceID: ws, Name: "pg-16", Engine: pg, Version: "16", Status: running, ClusterID: 1},
+		{ID: 2, UID: "pg-17", WorkspaceID: ws, Name: "pg-17", Engine: pg, Version: "17", Status: running, ClusterID: 1},
+	}).Error; err != nil {
+		t.Fatalf("seed instances: %v", err)
+	}
+
+	if got := s.FindReusableInstance(ws, models.DBEnginePostgres, "17", 0); got == nil || got.ID != 2 {
+		t.Errorf("version 17 reused %v, want pg-17", got)
+	}
+	if got := s.FindReusableInstance(ws, models.DBEnginePostgres, "15", 0); got != nil {
+		t.Errorf("version 15 reused %q, which runs %s", got.Name, got.Version)
+	}
+	if got := s.FindReusableInstance(ws, models.DBEnginePostgres, "", 0); got == nil {
+		t.Error("an unstated version found nothing")
 	}
 }

@@ -2651,10 +2651,16 @@ func (s *Service) applyDatabase(ctx context.Context, workspaceID uint, ch declar
 			return err
 		}
 		for _, f := range ch.Fields {
-			if !strings.HasPrefix(f.Field, "resources.") {
-				// Engine/version changes are not converged in place (would recreate data).
-				return fmt.Errorf("database %q: in-place engine/version change is not supported", ch.Name)
+			if strings.HasPrefix(f.Field, "resources.") {
+				continue
 			}
+			// Engine/version changes are not converged in place: the data would have to be migrated.
+			if f.Field == "version" {
+				return fmt.Errorf("database %q runs %s %s, but the manifest declares %s; its data is not migrated automatically. "+
+					"Set version: %s, or delete the database to re-create it on a %s instance",
+					ch.Name, desired.Database.Engine, f.From, f.To, f.From, f.To)
+			}
+			return fmt.Errorf("database %q: in-place engine/version change is not supported", ch.Name)
 		}
 		return s.resizeDatabase(ctx, workspaceID, ch.Name, desired.Database)
 	}
