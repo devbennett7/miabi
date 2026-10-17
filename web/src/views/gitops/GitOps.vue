@@ -72,6 +72,14 @@ watch(currentWorkspaceId, load, { immediate: true })
 // allow_empty only makes sense with prune; clear it when prune is turned off.
 watch(() => form.value.prune, (on) => { if (!on) form.value.allow_empty = false })
 
+function managedBy(s: GitSource) { return s.metadata?.['miabi.io/managed-by'] || '' }
+// A project another project declares is changed in that project's repository, not here.
+function nested(s: GitSource) { return managedBy(s) === 'gitops' }
+function parentName(s: GitSource) {
+  const id = s.metadata?.['miabi.io/gitops-source']
+  return items.value.find((p) => String(p.id) === id)?.name || `#${id}`
+}
+
 function openDetail(s: GitSource) {
   router.push({ name: 'gitops-detail', params: { id: s.id } })
 }
@@ -103,8 +111,12 @@ async function save() {
       await gitopsApi.update(currentWorkspaceId.value, editing.value.id, form.value)
       notify.success(t('notify.gitOps.updated'))
     } else {
-      await gitopsApi.create(currentWorkspaceId.value, form.value)
+      const res = await gitopsApi.create(currentWorkspaceId.value, form.value)
       notify.success(t('notify.gitOps.created'))
+      showModal.value = false
+      // The first sync starts on creation; the detail page shows it live.
+      openDetail(res.data.data)
+      return
     }
     showModal.value = false
     load(currentWorkspaceId.value)
@@ -254,7 +266,8 @@ function syncedTitle(s: GitSource) {
                 <div class="cell-id">
                   <span class="avatar avatar-sm"><span class="mdi mdi-git" style="font-size: 14px"></span></span>
                   <span class="cell-text">
-                    <span class="cell-title link">{{ s.name }} <span class="mdi mdi-graph-outline open-hint"></span></span>
+                    <span class="cell-title link">{{ s.name }} <span v-if="managedBy(s) === 'apply'" class="mdi mdi-console text-muted" :title="$t('gitops.appliedHint')" :aria-label="$t('gitops.appliedHint')"></span><span class="mdi mdi-graph-outline open-hint"></span></span>
+                    <span v-if="nested(s)" class="cell-sub" :title="$t('gitops.nestedHint')"><span class="mdi mdi-file-tree-outline"></span> {{ $t('gitops.declaredBy', { name: parentName(s) }) }}</span>
                     <span class="cell-sub">{{ s.repo_url }} · {{ s.ref }}<span v-if="s.path && s.path !== '.'">/{{ s.path }}</span></span>
                   </span>
                 </div>
@@ -280,8 +293,8 @@ function syncedTitle(s: GitSource) {
                 <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('gitops.syncNow')" :aria-label="$t('gitops.syncNow')" :disabled="syncing === s.id" @click="sync(s)">
                   <span class="mdi" :class="syncing === s.id ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span>
                 </button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEdit(s)"><span class="mdi mdi-pencil-outline"></span></button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="toDelete = s"><span class="mdi mdi-delete-outline"></span></button>
+                <button v-if="ws.canEdit && !nested(s)" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEdit(s)"><span class="mdi mdi-pencil-outline"></span></button>
+                <button v-if="ws.canEdit && !nested(s)" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="toDelete = s"><span class="mdi mdi-delete-outline"></span></button>
               </td>
             </tr>
           </tbody>
@@ -295,8 +308,9 @@ function syncedTitle(s: GitSource) {
         <div class="gc-head">
           <span class="avatar avatar-sm"><span class="mdi mdi-git" style="font-size: 14px"></span></span>
           <span class="cell-text">
-            <span class="cell-title link">{{ s.name }} <span class="mdi mdi-graph-outline open-hint"></span></span>
+            <span class="cell-title link">{{ s.name }} <span v-if="managedBy(s) === 'apply'" class="mdi mdi-console text-muted" :title="$t('gitops.appliedHint')" :aria-label="$t('gitops.appliedHint')"></span><span class="mdi mdi-graph-outline open-hint"></span></span>
             <span class="cell-sub" :title="s.repo_url">{{ s.repo_url }}</span>
+            <span v-if="nested(s)" class="cell-sub" :title="$t('gitops.nestedHint')"><span class="mdi mdi-file-tree-outline"></span> {{ $t('gitops.declaredBy', { name: parentName(s) }) }}</span>
           </span>
           <span class="badge gc-status" :class="statusMeta[s.status].badge">
             <span class="mdi" :class="statusMeta[s.status].icon"></span> {{ t(statusMeta[s.status].label) }}
@@ -318,8 +332,8 @@ function syncedTitle(s: GitSource) {
           <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('gitops.syncNow')" :aria-label="$t('gitops.syncNow')" :disabled="syncing === s.id" @click="sync(s)">
             <span class="mdi" :class="syncing === s.id ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span>
           </button>
-          <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEdit(s)"><span class="mdi mdi-pencil-outline"></span></button>
-          <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="toDelete = s"><span class="mdi mdi-delete-outline"></span></button>
+          <button v-if="ws.canEdit && !nested(s)" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEdit(s)"><span class="mdi mdi-pencil-outline"></span></button>
+          <button v-if="ws.canEdit && !nested(s)" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="toDelete = s"><span class="mdi mdi-delete-outline"></span></button>
         </div>
       </div>
     </div>
@@ -335,7 +349,8 @@ function syncedTitle(s: GitSource) {
           <div class="modal-body">
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.name') }}</label>
-              <input v-model="form.name" class="form-input" :placeholder="$t('gitops.namePlaceholder')" required autofocus :aria-label="$t('apps.form.name')" />
+              <input v-model="form.name" class="form-input" :placeholder="$t('gitops.namePlaceholder')" required autofocus :readonly="!!editing" :aria-label="$t('apps.form.name')" />
+              <p v-if="editing" class="form-hint">{{ $t('gitops.nameFixed') }}</p>
             </div>
             <div class="form-group">
               <label class="form-label">{{ $t('apps.form.sourceGit') }}</label>

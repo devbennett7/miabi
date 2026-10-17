@@ -1928,7 +1928,12 @@
     "viewDiff": "View diff",
     "waitingForLogOutput": "Waiting for log output…",
     "requireSealedLabel": "Sealed secrets only — refuse a Secret with a plaintext value in the repository",
-    "requireSealedHint": "A sync fails while any Secret carries a value. Use a SealedSecret (miabi secrets seal) or generate: true instead."
+    "requireSealedHint": "A sync fails while any Secret carries a value. Use a SealedSecret (miabi secrets seal) or generate: true instead.",
+    "declaredBy": "declared by {name}",
+    "declaredByParent": "declared by its parent project",
+    "nestedHint": "Declared in another GitOps project’s repository: change or remove it there.",
+    "appliedHint": "Created from a manifest with miabi apply",
+    "nameFixed": "The name can’t be changed after creation."
   },
   "inbox": {
     "alertsAndUpdatesAcrossYour": "Alerts and updates across your workspaces.",

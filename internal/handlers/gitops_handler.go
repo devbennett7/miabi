@@ -22,6 +22,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -74,7 +75,6 @@ type CreateGitSourceRequest struct {
 
 type UpdateGitSourceRequest struct {
 	Body struct {
-		Name            string `json:"name"`
 		RepoURL         string `json:"repo_url"`
 		Ref             string `json:"ref"`
 		Path            string `json:"path"`
@@ -108,6 +108,7 @@ func (h *GitOpsHandler) Create(c *okapi.Context, req *CreateGitSourceRequest) er
 		return h.mapErr(c, err)
 	}
 	h.record(c, wsID, "gitops.create", src.ID)
+	h.svc.SyncInBackground(src.ID)
 	return created(c, src)
 }
 
@@ -129,8 +130,11 @@ func (h *GitOpsHandler) Update(c *okapi.Context, req *UpdateGitSourceRequest) er
 		return c.AbortBadRequest("invalid git source id")
 	}
 	wsID := middlewares.WorkspaceID(c)
+	if err := h.refuseNested(c, wsID, id); err != nil {
+		return err
+	}
 	src, err := h.svc.Update(wsID, id, gitops.Input{
-		Name: req.Body.Name, RepoURL: req.Body.RepoURL, Ref: req.Body.Ref, Path: req.Body.Path,
+		RepoURL: req.Body.RepoURL, Ref: req.Body.Ref, Path: req.Body.Path,
 		GitRepositoryID: req.Body.GitRepositoryID, SyncPolicy: models.GitSyncPolicy(req.Body.SyncPolicy),
 		Prune: req.Body.Prune, SelfHeal: req.Body.SelfHeal, AllowEmpty: req.Body.AllowEmpty,
 		RequireSealedSecrets: req.Body.RequireSealedSecrets,
@@ -148,6 +152,9 @@ func (h *GitOpsHandler) Delete(c *okapi.Context) error {
 		return c.AbortBadRequest("invalid git source id")
 	}
 	wsID := middlewares.WorkspaceID(c)
+	if err := h.refuseNested(c, wsID, id); err != nil {
+		return err
+	}
 	// Opt-in cascade: ?cascade=true also tears down the resources this project
 	// created. Default keeps them running.
 	cascade := c.Query("cascade") == "true"
@@ -165,6 +172,26 @@ func (h *GitOpsHandler) Delete(c *okapi.Context) error {
 	// Return the teardown result so the UI can show which resources were removed
 	// (and any that failed). teardown is nil for a non-cascade delete.
 	return ok(c, GitOpsDeleteResult{Message: msg, Teardown: teardown})
+}
+
+// refuseNested blocks editing or deleting a project another project declares: the parent's next
+// sync would undo it, so the change belongs in the parent's repository.
+func (h *GitOpsHandler) refuseNested(c *okapi.Context, wsID, id uint) error {
+	src, err := h.svc.Get(wsID, id)
+	if err != nil {
+		return c.AbortNotFound("git source not found")
+	}
+	if src.Metadata[models.MetaManagedBy] != models.ManagedByGitOps {
+		return nil
+	}
+	parent := "another GitOps project"
+	if pid, perr := strconv.ParseUint(src.Metadata[models.MetaGitOpsSource], 10, 64); perr == nil {
+		if p, gerr := h.svc.Get(wsID, uint(pid)); gerr == nil {
+			parent = fmt.Sprintf("the GitOps project %q", p.Name)
+		}
+	}
+	return c.AbortWithError(http.StatusConflict, fmt.Errorf(
+		"this project is declared by %s — change or remove it in that project's repository", parent))
 }
 
 // Sync reconciles a source now.

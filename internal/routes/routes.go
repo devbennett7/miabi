@@ -1107,6 +1107,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	// GitOps: reconcile a repo of miabi.io/v1 manifests via the apply engine.
 	gitopsService := gitops.NewService(repositories.NewGitSourceRepository(db), gitRepoRepo, applyService)
 	gitopsService.SetSecrets(secretService) // resolve a vault-backed Git credential when fetching
+	applyService.SetGitSources(gitopsService)
 	// CI/CD pipelines: definitions + runs on the internal runner (worker).
 	pipelineService := pipeline.NewService(repositories.NewPipelineRepository(db), producer)
 	// Repository-owned pipelines: adopting a repo's .miabi/pipeline.yaml and

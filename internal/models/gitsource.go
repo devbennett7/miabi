@@ -76,6 +76,14 @@ type GitSource struct {
 	// RequireSealedSecrets refuses a sync whose manifests carry a Secret with a plaintext value, so a
 	// credential can't land in the repository by mistake. SealedSecret and generated Secrets still pass.
 	RequireSealedSecrets bool `json:"require_sealed_secrets" gorm:"not null;default:false"`
+	// DeletePolicy is what deleting the source does to the resources it created: orphan leaves them
+	// running, cascade tears them down. It applies when a manifest prunes a declared source.
+	DeletePolicy string `json:"delete_policy" gorm:"not null;default:orphan"`
+
+	// Metadata holds labels; "miabi.io/" keys are platform-managed (managed-by, and the parent
+	// project's gitops-source for a nested source).
+	Metadata    Metadata `json:"metadata,omitempty" gorm:"serializer:json"`
+	Annotations Metadata `json:"annotations,omitempty" gorm:"serializer:json"`
 
 	// WebhookSecret authenticates inbound provider push webhooks. Never serialized.
 	WebhookSecret string `json:"-" gorm:"not null"`

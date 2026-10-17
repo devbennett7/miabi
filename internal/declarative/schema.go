@@ -70,6 +70,9 @@ const (
 	// a run definition plus a fingerprint: a sync runs it only when its runPolicy
 	// says so, never again for an unchanged spec.
 	KindJob Kind = "Job"
+	// KindGitSource is a GitOps project: a Git path of manifests the workspace keeps reconciled.
+	// Declared from a GitOps repository it nests one project under another ("app of apps").
+	KindGitSource Kind = "GitSource"
 )
 
 // knownKinds is the set of recognized kinds, used by the parser to route a
@@ -89,6 +92,7 @@ var knownKinds = map[Kind]bool{
 	KindMiddleware:   true,
 	KindCronJob:      true,
 	KindJob:          true,
+	KindGitSource:    true,
 }
 
 // Meta is the identity block shared by every kind. Labels are short and identifying (for selection
@@ -125,6 +129,7 @@ type Resource struct {
 	Middleware   *MiddlewareSpec   `yaml:"-" json:"middleware,omitempty"`
 	CronJob      *CronJobSpec      `yaml:"-" json:"cronJob,omitempty"`
 	Job          *JobSpec          `yaml:"-" json:"job,omitempty"`
+	GitSource    *GitSourceSpec    `yaml:"-" json:"gitSource,omitempty"`
 }
 
 // Key is the stable identity of a resource within a workspace: "<kind>/<name>".
@@ -532,6 +537,31 @@ type DomainSpec struct {
 	TLS      string `yaml:"tls,omitempty" json:"tls,omitempty"` // acme|custom (default acme)
 	Wildcard bool   `yaml:"wildcard,omitempty" json:"wildcard,omitempty"`
 }
+
+// GitSourceSpec is a GitOps project. The repository is either a public URL (repo) or a stored Git
+// credential named by repository, which supplies the URL too. The webhook secret is generated on create
+// and never declared.
+type GitSourceSpec struct {
+	Repo       string `yaml:"repo,omitempty" json:"repo,omitempty"`
+	Repository string `yaml:"repository,omitempty" json:"repository,omitempty"`
+	Ref        string `yaml:"ref,omitempty" json:"ref,omitempty"`               // branch, tag or commit (default main)
+	Path       string `yaml:"path,omitempty" json:"path,omitempty"`             // manifest directory (default .)
+	SyncPolicy string `yaml:"syncPolicy,omitempty" json:"syncPolicy,omitempty"` // manual|auto (default manual)
+	Prune      bool   `yaml:"prune,omitempty" json:"prune,omitempty"`
+	SelfHeal   bool   `yaml:"selfHeal,omitempty" json:"selfHeal,omitempty"`
+	AllowEmpty bool   `yaml:"allowEmpty,omitempty" json:"allowEmpty,omitempty"`
+	// RequireSealedSecrets refuses a sync whose manifests carry a plaintext Secret value.
+	RequireSealedSecrets bool `yaml:"requireSealedSecrets,omitempty" json:"requireSealedSecrets,omitempty"`
+	// DeletePolicy decides what deleting the project does to the resources it created: orphan (the
+	// default) leaves them running, cascade tears them down. Orphan keeps a mistaken prune harmless.
+	DeletePolicy string `yaml:"deletePolicy,omitempty" json:"deletePolicy,omitempty"`
+}
+
+// GitSource delete policies.
+const (
+	DeletePolicyOrphan  = "orphan"
+	DeletePolicyCascade = "cascade"
+)
 
 // RegistrySpec is a container-registry credential; an Application selects one via spec.registry.
 // Password is write-only and never appears in a plan — prefer a vault reference over an inline

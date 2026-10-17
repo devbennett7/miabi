@@ -2902,6 +2902,11 @@ export interface GitSource {
   self_heal: boolean
   allow_empty: boolean
   require_sealed_secrets: boolean
+  // What deleting the project does to its resources: orphan keeps them, cascade removes them.
+  delete_policy?: 'orphan' | 'cascade'
+  // miabi.io/managed-by is "gitops" for a project another project declares (its id in
+  // miabi.io/gitops-source) and "apply" for one created by miabi apply.
+  metadata?: Record<string, string>
   status: GitSourceStatus
   message?: string
   // The last reconcile that actually CHANGED something — not the last poll.

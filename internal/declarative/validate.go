@@ -22,6 +22,7 @@ package declarative
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -113,6 +114,21 @@ func (r *Resource) normalize() {
 		}
 	case r.Registry != nil:
 		r.Registry.Server = normalizeRegistryServer(r.Registry.Server)
+	case r.GitSource != nil:
+		g := r.GitSource
+		g.Repo, g.Ref, g.Path = strings.TrimSpace(g.Repo), strings.TrimSpace(g.Ref), strings.TrimSpace(g.Path)
+		if g.Ref == "" {
+			g.Ref = "main"
+		}
+		if g.Path == "" {
+			g.Path = "."
+		}
+		if g.SyncPolicy == "" {
+			g.SyncPolicy = "manual"
+		}
+		if g.DeletePolicy == "" {
+			g.DeletePolicy = DeletePolicyOrphan
+		}
 	}
 }
 
@@ -182,6 +198,8 @@ func (r *Resource) validate() error {
 		return r.validateDomain()
 	case KindRegistry:
 		return r.validateRegistry()
+	case KindGitSource:
+		return r.validateGitSource()
 	case KindConfig:
 		return r.validateConfig()
 	case KindMiddleware:
@@ -342,6 +360,26 @@ func (r *Resource) validateSealedSecret() error {
 	}
 	if _, _, err := sealed.Parse(r.SealedSecret.Value); err != nil {
 		return fmt.Errorf("sealed secret %q: value must be sealed with `miabi secrets seal`: %w", r.Metadata.Name, err)
+	}
+	return nil
+}
+
+func (r *Resource) validateGitSource() error {
+	g := r.GitSource
+	if g == nil {
+		return fmt.Errorf("gitsource %q: spec is required", r.Metadata.Name)
+	}
+	switch {
+	case (g.Repo == "") == (g.Repository == ""):
+		return fmt.Errorf("gitsource %q: set exactly one of repo (a URL) and repository (a stored Git credential)", r.Metadata.Name)
+	case g.Repository != "" && !nameRe.MatchString(g.Repository):
+		return fmt.Errorf("gitsource %q: repository %q must be a resource name matching %s", r.Metadata.Name, g.Repository, nameRe)
+	case g.SyncPolicy != "manual" && g.SyncPolicy != "auto":
+		return fmt.Errorf("gitsource %q: syncPolicy %q must be manual or auto", r.Metadata.Name, g.SyncPolicy)
+	case g.DeletePolicy != DeletePolicyOrphan && g.DeletePolicy != DeletePolicyCascade:
+		return fmt.Errorf("gitsource %q: deletePolicy %q must be orphan or cascade", r.Metadata.Name, g.DeletePolicy)
+	case strings.HasPrefix(g.Path, "/") || slices.Contains(strings.Split(g.Path, "/"), ".."):
+		return fmt.Errorf("gitsource %q: path %q must be relative to the repository root", r.Metadata.Name, g.Path)
 	}
 	return nil
 }
