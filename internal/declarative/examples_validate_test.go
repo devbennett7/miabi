@@ -109,6 +109,14 @@ func TestExamplesParse(t *testing.T) {
 		}
 	}
 
+	if gs, derr := os.ReadFile(filepath.Join(examplesDir, "apply", "gitsources.yaml")); derr != nil {
+		t.Fatalf("read gitsources.yaml: %v", derr)
+	} else if gsSet, perr := d.Parse(gs); perr != nil {
+		t.Fatalf("parse apply/gitsources.yaml: %v", perr)
+	} else if len(gsSet.ByKind(d.KindGitSource)) < 2 {
+		t.Error("gitsources.yaml should declare its GitSources")
+	}
+
 	// Config bundle: every mount must resolve to a config in the bundle, and the
 	// example must keep demonstrating both projection forms (whole set under a
 	// directory, and a single pinned key) — that is what it exists to show.

@@ -168,6 +168,10 @@
           "description": "ConfigSha is written by Miabi, never by the operator: it records the digest of the DEFAULT config last written, which is what keeps a customized goma.yml from being overwritten.",
           "type": "string"
         },
+        "countryHeader": {
+          "description": "CountryHeader sends each client's ISO country code to every app in the X-Goma-Country request header. It needs a GeoIP database beside goma.yml; without one the header is simply never set.",
+          "type": "boolean"
+        },
         "env": {
           "additionalProperties": {
             "type": "string"

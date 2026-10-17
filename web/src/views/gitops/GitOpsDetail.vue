@@ -38,6 +38,9 @@ const { currentWorkspaceId } = storeToRefs(ws)
 const sourceId = computed(() => Number(route.params.id))
 
 const source = ref<GitSource | null>(null)
+// Set when another project declares this one; edits belong in that project's repository.
+const parentId = computed(() =>
+  source.value?.metadata?.['miabi.io/managed-by'] === 'gitops' ? source.value.metadata['miabi.io/gitops-source'] : '')
 const topo = ref<Topology | null>(null)
 const planByKey = ref<Record<string, PlanChange>>({})
 const loading = ref(false)
@@ -615,6 +618,11 @@ const policyFlags = computed(() => {
             <span v-else class="mono"><span class="mdi mdi-source-repository"></span>{{ source.repo_url }}</span>
             <span class="sep">·</span><span class="mono"><span class="mdi mdi-source-branch"></span>{{ source.ref }}</span>
             <span class="sep">·</span><span class="mono"><span class="mdi mdi-folder-outline"></span>{{ source.path || '.' }}</span>
+            <template v-if="parentId"><span class="sep">·</span>
+              <router-link class="repo-link" :to="{ name: 'gitops-detail', params: { id: parentId } }" :title="$t('gitops.nestedHint')">
+                <span class="mdi mdi-file-tree-outline"></span>{{ $t('gitops.declaredByParent') }}</router-link>
+            </template>
+            <span v-else-if="source.metadata?.['miabi.io/managed-by'] === 'apply'" class="mdi mdi-console" :title="$t('gitops.appliedHint')" :aria-label="$t('gitops.appliedHint')"></span>
           </p>
         </div>
         <span v-if="source" class="badge status-badge" :class="sourceStatusMeta[source.status].badge">
@@ -634,7 +642,7 @@ const policyFlags = computed(() => {
           <span class="mdi mdi-file-search-outline"></span>{{ $t('gitops.preview') }}</button>
         <button v-if="ws.canEdit" class="btn btn-secondary" :disabled="syncing" @click="sync">
           <span class="mdi" :class="syncing ? 'mdi-loading mdi-spin' : 'mdi-sync'"></span>{{ $t('gitops.sync') }}</button>
-        <button v-if="ws.canEdit" class="btn btn-secondary" :title="$t('gitops.editSource')"
+        <button v-if="ws.canEdit && !parentId" class="btn btn-secondary" :title="$t('gitops.editSource')"
           @click="router.push({ name: 'gitops', query: { edit: String(sourceId) } })">
           <span class="mdi mdi-pencil-outline"></span>{{ $t('action.edit') }}</button>
       </div>

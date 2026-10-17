@@ -369,6 +369,48 @@
       },
       "type": "object"
     },
+    "GitSourceSpec": {
+      "additionalProperties": false,
+      "description": "GitSourceSpec is a GitOps project. The repository is either a public URL (repo) or a stored Git credential named by repository, which supplies the URL too. The webhook secret is generated on create and never declared.",
+      "properties": {
+        "allowEmpty": {
+          "type": "boolean"
+        },
+        "deletePolicy": {
+          "description": "DeletePolicy decides what deleting the project does to the resources it created: orphan (the default) leaves them running, cascade tears them down. Orphan keeps a mistaken prune harmless.",
+          "type": "string"
+        },
+        "path": {
+          "description": "manifest directory (default .)",
+          "type": "string"
+        },
+        "prune": {
+          "type": "boolean"
+        },
+        "ref": {
+          "description": "branch, tag or commit (default main)",
+          "type": "string"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "repository": {
+          "type": "string"
+        },
+        "requireSealedSecrets": {
+          "description": "RequireSealedSecrets refuses a sync whose manifests carry a plaintext Secret value.",
+          "type": "boolean"
+        },
+        "selfHeal": {
+          "type": "boolean"
+        },
+        "syncPolicy": {
+          "description": "manual|auto (default manual)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "HealthcheckSpec": {
       "additionalProperties": false,
       "description": "HealthcheckSpec is how a container's health is probed. Only the fields stated are applied; the rest keep their current value (interval 30s, timeout 5s, 3 retries and no start period on a new app).",
@@ -1056,6 +1098,25 @@
       "if": {
         "properties": {
           "kind": {
+            "const": "GitSource"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "spec": {
+            "$ref": "#/$defs/GitSourceSpec"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
             "const": "Job"
           }
         },
@@ -1238,6 +1299,7 @@
         "CronJob",
         "Database",
         "Domain",
+        "GitSource",
         "Job",
         "Middleware",
         "Project",

@@ -1,0 +1,37 @@
+# Managing GitOps projects from one folder.
+#
+# A GitSource is a GitOps project: a Git path of manifests the workspace keeps
+# reconciled. Apply this file once and every project below is created and
+# synced straight away; syncPolicy: auto keeps it in step with Git after that.
+#
+# Committed to a GitOps project's own repository instead, these become nested
+# projects ("app of apps"): the root project creates and prunes them, and they
+# are locked in the UI. Nesting stops at three levels, and a project can never
+# declare itself or one of its parents.
+#
+# Apply with:  miabi apply -f gitsources.yaml
+---
+apiVersion: miabi.io/v1
+kind: GitSource
+metadata:
+  name: shop
+spec:
+  # A stored Git credential (Settings → Git repositories) supplies the URL and
+  # the clone token. Use repo: <url> instead for a public repository.
+  repository: gitea-examples
+  ref: main
+  path: gitops/shop
+  syncPolicy: auto
+  prune: true
+  requireSealedSecrets: true
+---
+apiVersion: miabi.io/v1
+kind: GitSource
+metadata:
+  name: laravel
+spec:
+  repo: https://github.com/miabi-io/examples.git
+  path: gitops/laravel
+  # Deleting this project (or removing it from the file under --prune) also
+  # removes the apps it deployed. The default, orphan, leaves them running.
+  deletePolicy: cascade

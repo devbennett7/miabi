@@ -138,19 +138,14 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.GitSource, error) 
 	return src, nil
 }
 
-// Update mutates an existing GitSource's configuration.
+// Update mutates an existing GitSource's configuration. The name is fixed at creation: it is the
+// handle manifests and nested projects address the source by, so in.Name is ignored.
 func (s *Service) Update(workspaceID, id uint, in Input) (*models.GitSource, error) {
 	src, err := s.get(workspaceID, id)
 	if err != nil {
 		return nil, err
 	}
 	in.normalize()
-	if in.Name != "" && in.Name != src.Name {
-		if taken, _ := s.repo.ExistsByName(workspaceID, in.Name); taken {
-			return nil, ErrNameTaken
-		}
-		src.Name = in.Name
-	}
 	// A selected git repository supplies the URL + credentials; otherwise keep an
 	// explicitly provided URL.
 	if in.GitRepositoryID != nil {
@@ -205,6 +200,75 @@ func (s *Service) Delete(ctx context.Context, workspaceID, id uint, cascade bool
 		return nil, err
 	}
 	return res, nil
+}
+
+// Declare creates (id 0) or updates the source a manifest declares, then starts a sync: always for
+// a new source, and on an update when it reconciles automatically.
+func (s *Service) Declare(workspaceID, id uint, in apply.GitSourceInput) (*models.GitSource, error) {
+	inp := Input{
+		Name: in.Name, RepoURL: in.Repo, Ref: in.Ref, Path: in.Path, SyncPolicy: models.GitSyncPolicy(in.SyncPolicy),
+		Prune: in.Prune, SelfHeal: in.SelfHeal, AllowEmpty: in.AllowEmpty, RequireSealedSecrets: in.RequireSealedSecrets,
+	}
+	if in.Repository != "" {
+		gr, err := s.gitRepos.FindByName(workspaceID, in.Repository)
+		if err != nil {
+			return nil, fmt.Errorf("%w: gitsource %q: unknown git repository %q (create the credential in the workspace first)",
+				apply.ErrInvalidManifest, in.Name, in.Repository)
+		}
+		inp.GitRepositoryID = &gr.ID
+	}
+	var src *models.GitSource
+	var err error
+	if id == 0 {
+		src, err = s.Create(workspaceID, inp)
+	} else {
+		src, err = s.Update(workspaceID, id, inp)
+	}
+	if err != nil {
+		return nil, err
+	}
+	src.DeletePolicy, src.Metadata, src.Annotations = in.DeletePolicy, in.Metadata, in.Annotations
+	if err := s.repo.Update(src); err != nil {
+		return nil, err
+	}
+	if id == 0 || src.SyncPolicy == models.GitSyncAuto {
+		s.SyncInBackground(src.ID)
+	}
+	return src, nil
+}
+
+// SyncInBackground reconciles a source without blocking the caller, so a new project deploys
+// straight away instead of on the next sweep. Start it only once the source row is final: the
+// reconcile saves the whole row.
+func (s *Service) SyncInBackground(id uint) {
+	go func() {
+		if err := s.SyncByID(context.Background(), id); err != nil {
+			logger.Warn("gitops initial sync failed", "source", id, "error", err)
+		}
+	}()
+}
+
+// Remove deletes a declared source, tearing its resources down only when its delete policy says cascade.
+func (s *Service) Remove(ctx context.Context, workspaceID, id uint) error {
+	src, err := s.get(workspaceID, id)
+	if err != nil {
+		return err
+	}
+	_, err = s.Delete(ctx, workspaceID, id, src.DeletePolicy == declarative.DeletePolicyCascade)
+	return err
+}
+
+// RepositoryNames maps the workspace's Git credential ids to their names.
+func (s *Service) RepositoryNames(workspaceID uint) (map[uint]string, error) {
+	repos, err := s.gitRepos.ListByWorkspace(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uint]string, len(repos))
+	for i := range repos {
+		out[repos[i].ID] = repos[i].Name
+	}
+	return out, nil
 }
 
 // sourceLabel is the value stored on every resource a source creates

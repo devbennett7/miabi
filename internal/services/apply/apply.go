@@ -120,6 +120,8 @@ type Service struct {
 	jobs *job.Service
 	// unsealer opens a SealedSecret's value; nil makes one fail rather than store nothing.
 	unsealer Unsealer
+	// gitSources converges kind: GitSource.
+	gitSources GitSources
 }
 
 // Unsealer opens sealed secret values with the workspace's sealing keys. Satisfied by the sealing service.
@@ -1826,6 +1828,10 @@ func (s *Service) snapshot(ctx context.Context, workspaceID uint) (*declarative.
 		}
 	}
 
+	if err := s.snapshotGitSources(workspaceID, set); err != nil {
+		return nil, err
+	}
+
 	// Certificates are not a declarable kind, but a route names the one it serves — so the id has to
 	// be mapped back to that name or every custom-TLS route would read as drift.
 	certNameByID := map[uint]string{}
@@ -2103,6 +2109,8 @@ func (s *Service) execute(ctx context.Context, workspaceID uint, ch declarative.
 		return s.applyCronJob(ctx, workspaceID, ch, desired)
 	case declarative.KindJob:
 		return s.applyJob(ctx, workspaceID, ch, desired)
+	case declarative.KindGitSource:
+		return s.applyGitSource(ctx, workspaceID, ch, desired)
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedKind, ch.Kind)
 	}

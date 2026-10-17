@@ -1928,7 +1928,12 @@
     "viewDiff": "Voir les différences",
     "waitingForLogOutput": "En attente des journaux…",
     "requireSealedLabel": "Secrets scellés uniquement — refuser un Secret avec une valeur en clair dans le dépôt",
-    "requireSealedHint": "Une synchronisation échoue tant qu’un Secret contient une valeur. Utilisez un SealedSecret (miabi secrets seal) ou generate: true."
+    "requireSealedHint": "Une synchronisation échoue tant qu’un Secret contient une valeur. Utilisez un SealedSecret (miabi secrets seal) ou generate: true.",
+    "declaredBy": "déclaré par {name}",
+    "declaredByParent": "déclaré par son projet parent",
+    "nestedHint": "Déclaré dans le dépôt d’un autre projet GitOps : modifiez-le ou supprimez-le là-bas.",
+    "appliedHint": "Créé depuis un manifeste avec miabi apply",
+    "nameFixed": "Le nom ne peut pas être modifié après la création."
   },
   "inbox": {
     "alertsAndUpdatesAcrossYour": "Alertes et mises à jour de tous vos espaces de travail.",

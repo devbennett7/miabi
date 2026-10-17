@@ -286,5 +286,16 @@ func (s *Service) resolveLive(workspaceID uint, kind declarative.Kind, name stri
 			node.LiveID, node.Slug = def.ID, def.Name
 			node.Health = string(s.jobs.LastRunStatus(def))
 		}
+	case declarative.KindGitSource:
+		if s.gitSources == nil {
+			return
+		}
+		if sources, err := s.gitSources.List(workspaceID); err == nil {
+			for i := range sources {
+				if sources[i].Name == name {
+					node.LiveID, node.Slug, node.Health = sources[i].ID, sources[i].Name, string(sources[i].Status)
+				}
+			}
+		}
 	}
 }

@@ -134,6 +134,9 @@ func applyRank(k Kind) int {
 	case KindRoute, KindCronJob, KindJob:
 		// Jobs run in an existing app and may pull through a declared Registry.
 		return 3
+	case KindGitSource:
+		// Last, so a parent's own resources are in place before a nested project starts syncing.
+		return 4
 	default:
 		return 9
 	}
@@ -701,6 +704,18 @@ func specFields(r Resource) map[string]string {
 		f["wildcard"] = fmt.Sprintf("%t", r.Domain.Wildcard)
 	case r.CronJob != nil:
 		cronJobFields(r.CronJob, f)
+	case r.GitSource != nil:
+		g := r.GitSource
+		f["repo"] = g.Repo
+		f["repository"] = g.Repository
+		f["ref"] = g.Ref
+		f["path"] = g.Path
+		f["syncPolicy"] = g.SyncPolicy
+		f["prune"] = strconv.FormatBool(g.Prune)
+		f["selfHeal"] = strconv.FormatBool(g.SelfHeal)
+		f["allowEmpty"] = strconv.FormatBool(g.AllowEmpty)
+		f["requireSealedSecrets"] = strconv.FormatBool(g.RequireSealedSecrets)
+		f["deletePolicy"] = g.DeletePolicy
 	}
 	return f
 }
