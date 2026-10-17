@@ -790,9 +790,19 @@ async function toggleCordon() {
 }
 
 const regenToken = ref<string | null>(null)
+// The join commands carrying the new token, so the operator can re-run the agent with it.
+const regenCommands = ref<{ docker: string; script: string } | null>(null)
 async function regenerate() {
   try {
-    regenToken.value = (await nodesApi.regenerateToken(id)).data.data.token
+    const token = (await nodesApi.regenerateToken(id)).data.data.token
+    regenToken.value = token
+    regenCommands.value = null
+    joinMethod.value = 'docker'
+    const c = (await nodesApi.joinCommand(id)).data.data
+    regenCommands.value = {
+      docker: c.command.replace('<JOIN_TOKEN>', token),
+      script: c.script_command.replace('<JOIN_TOKEN>', token),
+    }
   } catch (e) {
     notify.apiError(e)
   }
@@ -914,13 +924,19 @@ async function submitConnectivity() {
 // --- Agent join command ---
 // The same modal serves a fresh join and an in-place upgrade; they differ only in which command the
 // server built and what the footnote warns about.
-const joinCmd = ref<{ command: string; hint: string; upgrade: boolean } | null>(null)
+// The install script always takes a join token, so an upgrade, which reuses the running agent's,
+// has no script form.
+const joinCmd = ref<{ command: string; script?: string; hint: string; upgrade: boolean } | null>(null)
+const joinMethod = ref<'docker' | 'script'>('docker')
+const joinShown = computed(() =>
+  joinMethod.value === 'script' && joinCmd.value?.script ? joinCmd.value.script : joinCmd.value?.command ?? '')
 async function showJoinCommand(upgrade = false) {
   try {
     const c = (await nodesApi.joinCommand(id)).data.data
+    joinMethod.value = 'docker'
     joinCmd.value = upgrade
       ? { command: c.upgrade_command, hint: c.upgrade_hint, upgrade: true }
-      : { command: c.command, hint: c.token_hint, upgrade: false }
+      : { command: c.command, script: c.script_command, hint: c.token_hint, upgrade: false }
   } catch (e) { notify.apiError(e) }
 }
 
@@ -1872,9 +1888,20 @@ const gwBadge = computed(() => {
             </div>
           </div>
           <div class="code-block" style="margin-top: 14px">{{ regenToken }}</div>
+          <template v-if="regenCommands">
+            <p class="text-muted" style="font-size: 13px; margin: 14px 0 0">Or re-run the agent on the node host with the new token:</p>
+            <div class="tabs" style="margin: 8px 0" role="tablist">
+              <button type="button" role="tab" class="tab" :class="{ active: joinMethod === 'docker' }" :aria-selected="joinMethod === 'docker'" @click="joinMethod = 'docker'">
+                <span class="mdi mdi-docker"></span> Docker</button>
+              <button type="button" role="tab" class="tab" :class="{ active: joinMethod === 'script' }" :aria-selected="joinMethod === 'script'" @click="joinMethod = 'script'">
+                <span class="mdi mdi-script-text-outline"></span> Script</button>
+            </div>
+            <pre class="code-block cmd">{{ joinMethod === 'script' ? regenCommands.script : regenCommands.docker }}</pre>
+          </template>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="copy(regenToken!)">Copy</button>
+          <button type="button" class="btn btn-secondary" @click="copy(regenToken!)">Copy token</button>
+          <button v-if="regenCommands" type="button" class="btn btn-secondary" @click="copy(joinMethod === 'script' ? regenCommands.script : regenCommands.docker)">Copy command</button>
           <button type="button" class="btn btn-primary" @click="regenToken = null">Done</button>
         </div>
       </AppModal>
@@ -1888,11 +1915,17 @@ const gwBadge = computed(() => {
         </div>
         <div class="modal-body">
           <p class="text-muted" style="font-size: 13px; margin-bottom: 10px">{{ joinCmd.upgrade ? 'Run this on the node host to replace the running agent with the current image.' : 'Run this on the node host to start the agent and connect it to this manager.' }}</p>
-          <pre class="code-block cmd">{{ joinCmd.command }}</pre>
+          <div v-if="joinCmd.script" class="tabs" style="margin: 0 0 8px" role="tablist">
+            <button type="button" role="tab" class="tab" :class="{ active: joinMethod === 'docker' }" :aria-selected="joinMethod === 'docker'" @click="joinMethod = 'docker'">
+              <span class="mdi mdi-docker"></span> Docker</button>
+            <button type="button" role="tab" class="tab" :class="{ active: joinMethod === 'script' }" :aria-selected="joinMethod === 'script'" @click="joinMethod = 'script'">
+              <span class="mdi mdi-script-text-outline"></span> Script</button>
+          </div>
+          <pre class="code-block cmd">{{ joinShown }}</pre>
           <p class="text-muted" style="font-size: 12px; margin-top: 10px"><span class="mdi mdi-information-outline"></span> {{ joinCmd.hint }}</p>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="copy(joinCmd.command)">Copy</button>
+          <button type="button" class="btn btn-secondary" @click="copy(joinShown)">Copy</button>
           <button type="button" class="btn btn-primary" @click="joinCmd = null">Done</button>
         </div>
       </AppModal>
