@@ -31,3 +31,10 @@ func TestResolveRegistryToleratesAbsentSpec(t *testing.T) {
 		t.Fatalf("resolveRegistry(nil spec) = (%v, %v), want (nil, nil)", id, err)
 	}
 }
+
+func TestRefuseWeakerThanProfileToleratesAbsentSpec(t *testing.T) {
+	s := &Service{}
+	if err := s.refuseWeakerThanProfile(1, "api", nil); err != nil {
+		t.Fatalf("refuseWeakerThanProfile(nil spec) = %v, want nil", err)
+	}
+}

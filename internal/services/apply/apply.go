@@ -3020,8 +3020,11 @@ func updateConfigOf(spec *declarative.ApplicationSpec) *models.ServiceUpdateConf
 // refuseWeakerThanProfile fails a manifest that turns no-new-privileges off where the workspace's profile
 // forces it on: the container would never run as described, so it is refused like runAsUser: root.
 func (s *Service) refuseWeakerThanProfile(workspaceID uint, name string, spec *declarative.ApplicationSpec) error {
+	if spec == nil || spec.Security == nil {
+		return nil
+	}
 	sec := spec.Security
-	if sec == nil || sec.NoNewPrivileges == nil || *sec.NoNewPrivileges || !s.apps.EnforcesNoNewPrivileges(workspaceID) {
+	if sec.NoNewPrivileges == nil || *sec.NoNewPrivileges || !s.apps.EnforcesNoNewPrivileges(workspaceID) {
 		return nil
 	}
 	return fmt.Errorf("%w: application %q sets security.noNewPrivileges: false, but this workspace's restricted security "+
