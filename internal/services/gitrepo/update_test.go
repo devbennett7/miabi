@@ -44,6 +44,8 @@ type gitRepoRow struct {
 	Username            string
 	Secret              string
 	SecretRef           string
+	Metadata            string
+	Annotations         string
 	ConnectionStatus    string
 	ConnectionError     string
 	ConnectionCheckedAt *time.Time

@@ -59,6 +59,10 @@ type GitRepository struct {
 	// credential. Mutually exclusive with Secret; a name, so the API returns it.
 	SecretRef string `json:"secret_ref,omitempty"`
 
+	// Metadata holds labels; "miabi.io/" keys are platform-managed (managed-by, gitops-source).
+	Metadata    Metadata `json:"metadata,omitempty" gorm:"serializer:json"`
+	Annotations Metadata `json:"annotations,omitempty" gorm:"serializer:json"`
+
 	// Connection state from the last reachability check: a `git ls-remote` against
 	// the URL with this credential. Persisted so the list can show whether a
 	// credential actually works without re-probing every remote on every page load

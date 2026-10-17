@@ -127,6 +127,9 @@ type Input struct {
 	// `${{ secrets.NAME }}` reference to a workspace Secret, stored as a reference and resolved at every
 	// clone. Blank on update means keep what is stored.
 	Secret string
+	// Metadata and Annotations replace the stored ones when non-nil; a manifest sets them, the console
+	// leaves them alone.
+	Metadata, Annotations models.Metadata
 }
 
 func (s *Service) Create(workspaceID uint, in Input) (*models.GitRepository, error) {
@@ -166,6 +169,8 @@ func (s *Service) Create(workspaceID uint, in Input) (*models.GitRepository, err
 		Username:    in.Username,
 		Secret:      enc,
 		SecretRef:   ref,
+		Metadata:    in.Metadata,
+		Annotations: in.Annotations,
 	}
 	if err := s.repo.Create(g); err != nil {
 		return nil, err
@@ -222,6 +227,12 @@ func (s *Service) Update(workspaceID, id uint, in Input) (*models.GitRepository,
 			return nil, err
 		}
 		g.Secret, g.SecretRef = enc, ref
+	}
+	if in.Metadata != nil {
+		g.Metadata = in.Metadata
+	}
+	if in.Annotations != nil {
+		g.Annotations = in.Annotations
 	}
 	if err := s.repo.Update(g); err != nil {
 		return nil, err

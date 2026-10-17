@@ -286,6 +286,13 @@ func (s *Service) resolveLive(workspaceID uint, kind declarative.Kind, name stri
 			node.LiveID, node.Slug = def.ID, def.Name
 			node.Health = string(s.jobs.LastRunStatus(def))
 		}
+	case declarative.KindGitRepository:
+		if s.gitRepos == nil {
+			return
+		}
+		if g, err := s.gitRepos.GetByName(workspaceID, name); err == nil {
+			node.LiveID, node.Slug, node.Health = g.ID, g.Name, string(g.ConnectionStatus)
+		}
 	case declarative.KindGitSource:
 		if s.gitSources == nil {
 			return

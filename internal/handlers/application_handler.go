@@ -573,8 +573,8 @@ func (h *ApplicationHandler) Update(c *okapi.Context, req *UpdateAppRequest) err
 	// The source is owned elsewhere for marketplace/GitOps apps. Reject only an actual CHANGE, so a
 	// client that PATCHes the object back with its current image still works — many do, and failing
 	// those would break callers that are not touching the source at all.
-	if err := h.requireSourceUnchanged(c, app, req); err != nil {
-		return err
+	if err := sourceUnchangedLock(app, req); err != nil {
+		return c.AbortWithError(http.StatusConflict, err)
 	}
 	if req.Body.ContainerLabels != nil {
 		// Gated + validated + persisted here (reserved keys rejected). Sets
@@ -1459,17 +1459,14 @@ func (h *ApplicationHandler) record(c *okapi.Context, wsID uint, action string, 
 	h.audit.Record(audit.Entry{ActorID: &actor, WorkspaceID: &wsID, Action: action, TargetType: "application", TargetID: strconv.Itoa(int(appID)), IP: c.RealIP()})
 }
 
-// requireSourceUnchanged enforces, on the general update path, the same rule SetSource enforces:
+// sourceUnchangedLock enforces, on the general update path, the same rule SetSource enforces:
 // an application whose source is owned by a marketplace template or by GitOps cannot have it edited
 // interactively. It compares against the stored values so a no-op passes through untouched.
-func (h *ApplicationHandler) requireSourceUnchanged(c *okapi.Context, app *models.Application, req *UpdateAppRequest) error {
-	if _, owned := models.SourceOwnedElsewhere(app.Metadata); !owned {
-		return nil
-	}
+func sourceUnchangedLock(app *models.Application, req *UpdateAppRequest) error {
 	if !req.Body.changesSource(app) {
 		return nil
 	}
-	return h.requireSourceEditable(c, app)
+	return sourceLock(app)
 }
 
 func (h *ApplicationHandler) mapErr(c *okapi.Context, err error) error {

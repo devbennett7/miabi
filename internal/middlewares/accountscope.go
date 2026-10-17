@@ -20,6 +20,7 @@
 package middlewares
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -32,12 +33,13 @@ var accountReadable = map[string]bool{
 	"/capabilities": true,
 }
 
-// confineWorkspaceKey keeps a workspace-bound API key inside its workspace.
-func confineWorkspaceKey(c *okapi.Context) error {
+// workspaceKeyRefusal keeps a workspace-bound API key inside its workspace: nil when the request
+// stays in it, else the refusal for the caller to abort with.
+func workspaceKeyRefusal(c *okapi.Context) error {
 	if workspaceKeyAllowed(c.Param("workspace"), c.Request().Method, c.Request().URL.Path) {
 		return nil
 	}
-	return c.AbortForbidden("this API key is scoped to a workspace and cannot be used on account-level endpoints")
+	return errors.New("this API key is scoped to a workspace and cannot be used on account-level endpoints")
 }
 
 func workspaceKeyAllowed(workspaceParam, method, path string) bool {

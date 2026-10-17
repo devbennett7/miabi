@@ -200,14 +200,14 @@ func authAPIKey(c *okapi.Context, apiKeys *auth.APIKeyService, users *repositori
 		if key.WorkspaceID != nil {
 			keyWS = *key.WorkspaceID
 		}
-		if err := confineEphemeralKey(c, boundApp, apps, keyWS); err != nil {
-			return err
+		if err := ephemeralKeyRefusal(c, boundApp, apps, keyWS); err != nil {
+			return c.AbortForbidden(err.Error())
 		}
 	}
 
 	if key.WorkspaceID != nil {
-		if err := confineWorkspaceKey(c); err != nil {
-			return err
+		if err := workspaceKeyRefusal(c); err != nil {
+			return c.AbortForbidden(err.Error())
 		}
 	}
 	return c.Next()

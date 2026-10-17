@@ -1832,7 +1832,9 @@
     "repository": "Dépôt",
     "repositoryUrl": "URL du dépôt",
     "subtitle": "Dépôts publics ou privés utilisés au moment du build et par GitOps.",
-    "username": "Nom d’utilisateur"
+    "username": "Nom d’utilisateur",
+    "gitopsHint": "Déclaré par un projet GitOps : modifiez-le ou supprimez-le dans le dépôt de ce projet.",
+    "appliedHint": "Créé depuis un manifeste avec miabi apply"
   },
   "gitops": {
     "action": {

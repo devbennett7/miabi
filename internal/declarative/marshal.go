@@ -86,6 +86,8 @@ func (r Resource) spec() any {
 		return r.Registry
 	case r.GitSource != nil:
 		return r.GitSource
+	case r.GitRepository != nil:
+		return r.GitRepository
 	default:
 		return nil
 	}

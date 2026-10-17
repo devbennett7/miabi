@@ -73,26 +73,30 @@ const (
 	// KindGitSource is a GitOps project: a Git path of manifests the workspace keeps reconciled.
 	// Declared from a GitOps repository it nests one project under another ("app of apps").
 	KindGitSource Kind = "GitSource"
+	// KindGitRepository is a Git credential: a repository URL and how to authenticate to it. The
+	// token or SSH key is never in the manifest; it is read from the vault (a Secret or SealedSecret).
+	KindGitRepository Kind = "GitRepository"
 )
 
 // knownKinds is the set of recognized kinds, used by the parser to route a
 // document's spec into the right typed field.
 var knownKinds = map[Kind]bool{
-	KindApplication:  true,
-	KindStack:        true,
-	KindDatabase:     true,
-	KindVolume:       true,
-	KindRoute:        true,
-	KindSecret:       true,
-	KindSealedSecret: true,
-	KindDomain:       true,
-	KindRegistry:     true,
-	KindProject:      true,
-	KindConfig:       true,
-	KindMiddleware:   true,
-	KindCronJob:      true,
-	KindJob:          true,
-	KindGitSource:    true,
+	KindApplication:   true,
+	KindStack:         true,
+	KindDatabase:      true,
+	KindVolume:        true,
+	KindRoute:         true,
+	KindSecret:        true,
+	KindSealedSecret:  true,
+	KindDomain:        true,
+	KindRegistry:      true,
+	KindProject:       true,
+	KindConfig:        true,
+	KindMiddleware:    true,
+	KindCronJob:       true,
+	KindJob:           true,
+	KindGitSource:     true,
+	KindGitRepository: true,
 }
 
 // Meta is the identity block shared by every kind. Labels are short and identifying (for selection
@@ -115,21 +119,22 @@ type Resource struct {
 	Kind       Kind   `yaml:"kind" json:"kind"`
 	Metadata   Meta   `yaml:"metadata" json:"metadata"`
 
-	Application  *ApplicationSpec  `yaml:"-" json:"application,omitempty"`
-	Stack        *StackSpec        `yaml:"-" json:"stack,omitempty"`
-	Database     *DatabaseSpec     `yaml:"-" json:"database,omitempty"`
-	Volume       *VolumeSpec       `yaml:"-" json:"volume,omitempty"`
-	Route        *RouteSpec        `yaml:"-" json:"route,omitempty"`
-	Secret       *SecretSpec       `yaml:"-" json:"secret,omitempty"`
-	SealedSecret *SealedSecretSpec `yaml:"-" json:"sealedSecret,omitempty"`
-	Domain       *DomainSpec       `yaml:"-" json:"domain,omitempty"`
-	Registry     *RegistrySpec     `yaml:"-" json:"registry,omitempty"`
-	Project      *ProjectSpec      `yaml:"-" json:"project,omitempty"`
-	Config       *ConfigSpec       `yaml:"-" json:"config,omitempty"`
-	Middleware   *MiddlewareSpec   `yaml:"-" json:"middleware,omitempty"`
-	CronJob      *CronJobSpec      `yaml:"-" json:"cronJob,omitempty"`
-	Job          *JobSpec          `yaml:"-" json:"job,omitempty"`
-	GitSource    *GitSourceSpec    `yaml:"-" json:"gitSource,omitempty"`
+	Application   *ApplicationSpec   `yaml:"-" json:"application,omitempty"`
+	Stack         *StackSpec         `yaml:"-" json:"stack,omitempty"`
+	Database      *DatabaseSpec      `yaml:"-" json:"database,omitempty"`
+	Volume        *VolumeSpec        `yaml:"-" json:"volume,omitempty"`
+	Route         *RouteSpec         `yaml:"-" json:"route,omitempty"`
+	Secret        *SecretSpec        `yaml:"-" json:"secret,omitempty"`
+	SealedSecret  *SealedSecretSpec  `yaml:"-" json:"sealedSecret,omitempty"`
+	Domain        *DomainSpec        `yaml:"-" json:"domain,omitempty"`
+	Registry      *RegistrySpec      `yaml:"-" json:"registry,omitempty"`
+	Project       *ProjectSpec       `yaml:"-" json:"project,omitempty"`
+	Config        *ConfigSpec        `yaml:"-" json:"config,omitempty"`
+	Middleware    *MiddlewareSpec    `yaml:"-" json:"middleware,omitempty"`
+	CronJob       *CronJobSpec       `yaml:"-" json:"cronJob,omitempty"`
+	Job           *JobSpec           `yaml:"-" json:"job,omitempty"`
+	GitSource     *GitSourceSpec     `yaml:"-" json:"gitSource,omitempty"`
+	GitRepository *GitRepositorySpec `yaml:"-" json:"gitRepository,omitempty"`
 }
 
 // Key is the stable identity of a resource within a workspace: "<kind>/<name>".
@@ -276,9 +281,8 @@ type SourceSpec struct {
 	// BuildEnv are variables available to the BUILD, not to the running container — a private module
 	// token, a feature flag the compiler reads. Runtime env belongs in spec.env.
 	BuildEnv map[string]string `yaml:"buildEnv,omitempty" json:"buildEnv,omitempty"`
-	// Repository names a stored Git credential for a private repo, by its name in the workspace. It
-	// is not a declarable kind, so it resolves against credentials that already exist — the same rule
-	// spec.registry follows for an image pull.
+	// Repository names a Git credential for a private repo: a GitRepository in the bundle, or one
+	// that already exists in the workspace.
 	Repository string `yaml:"repository,omitempty" json:"repository,omitempty"`
 }
 
@@ -555,6 +559,15 @@ type GitSourceSpec struct {
 	// DeletePolicy decides what deleting the project does to the resources it created: orphan (the
 	// default) leaves them running, cascade tears them down. Orphan keeps a mistaken prune harmless.
 	DeletePolicy string `yaml:"deletePolicy,omitempty" json:"deletePolicy,omitempty"`
+}
+
+// GitRepositorySpec is a Git credential. SecretRef names the vault entry holding the token (auth
+// token) or private key (auth ssh), so the manifest is safe to commit when that entry is sealed.
+type GitRepositorySpec struct {
+	URL       string `yaml:"url" json:"url"`
+	Auth      string `yaml:"auth,omitempty" json:"auth,omitempty"` // public|token|ssh (default token with a secretRef, else public)
+	Username  string `yaml:"username,omitempty" json:"username,omitempty"`
+	SecretRef string `yaml:"secretRef,omitempty" json:"secretRef,omitempty"`
 }
 
 // GitSource delete policies.

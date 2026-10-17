@@ -42,6 +42,8 @@ function openCreate() {
   form.value = { name: '', display_name: '', url: '', auth_type: 'public', username: '', secret: '' }
   showModal.value = true
 }
+function managedBy(r: GitRepository) { return r.metadata?.['miabi.io/managed-by'] || '' }
+
 function openEdit(r: GitRepository) {
   editing.value = r
   form.value = {
@@ -179,7 +181,10 @@ const authTypes: { value: GitAuthType; label: string }[] = [
                 <div class="cell-id">
                   <span class="avatar avatar-sm"><span class="mdi mdi-git" style="font-size: 14px"></span></span>
                   <span class="cell-text">
-                    <span class="cell-title">{{ r.display_name || r.name }}</span>
+                    <span class="cell-title">{{ r.display_name || r.name }}
+                      <span v-if="managedBy(r) === 'gitops'" class="mdi mdi-source-branch text-muted" :title="$t('gitRepos.gitopsHint')" :aria-label="$t('gitRepos.gitopsHint')"></span>
+                      <span v-else-if="managedBy(r) === 'apply'" class="mdi mdi-console text-muted" :title="$t('gitRepos.appliedHint')" :aria-label="$t('gitRepos.appliedHint')"></span>
+                    </span>
                     <!-- The handle is what apps and pipelines reference, so it
                          stays visible even when a display name is set. -->
                     <span class="cell-sub">
@@ -206,8 +211,8 @@ const authTypes: { value: GitAuthType; label: string }[] = [
                 <button class="btn-icon btn-icon-muted" :title="$t('ldap.testConnection')" :aria-label="$t('ldap.testConnection')" :disabled="testing === r.id" @click="test(r)">
                   <span class="mdi" :class="testing === r.id ? 'mdi-loading mdi-spin' : 'mdi-connection'"></span>
                 </button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEdit(r)"><span class="mdi mdi-pencil-outline"></span></button>
-                <button v-if="ws.canEdit" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="pendingDelete = r"><span class="mdi mdi-delete-outline"></span></button>
+                <button v-if="ws.canEdit && managedBy(r) !== 'gitops'" class="btn-icon btn-icon-muted" :title="$t('action.edit')" :aria-label="$t('action.edit')" @click="openEdit(r)"><span class="mdi mdi-pencil-outline"></span></button>
+                <button v-if="ws.canEdit && managedBy(r) !== 'gitops'" class="btn-icon btn-icon-danger" :title="$t('action.delete')" :aria-label="$t('action.delete')" @click="pendingDelete = r"><span class="mdi mdi-delete-outline"></span></button>
               </td>
             </tr>
           </tbody>

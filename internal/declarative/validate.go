@@ -114,6 +114,15 @@ func (r *Resource) normalize() {
 		}
 	case r.Registry != nil:
 		r.Registry.Server = normalizeRegistryServer(r.Registry.Server)
+	case r.GitRepository != nil:
+		g := r.GitRepository
+		g.URL = NormalizeGitURL(g.URL)
+		if g.Auth == "" {
+			g.Auth = "public"
+			if g.SecretRef != "" {
+				g.Auth = "token"
+			}
+		}
 	case r.GitSource != nil:
 		g := r.GitSource
 		g.Repo, g.Ref, g.Path = strings.TrimSpace(g.Repo), strings.TrimSpace(g.Ref), strings.TrimSpace(g.Path)
@@ -200,6 +209,8 @@ func (r *Resource) validate() error {
 		return r.validateRegistry()
 	case KindGitSource:
 		return r.validateGitSource()
+	case KindGitRepository:
+		return r.validateGitRepository()
 	case KindConfig:
 		return r.validateConfig()
 	case KindMiddleware:
@@ -360,6 +371,36 @@ func (r *Resource) validateSealedSecret() error {
 	}
 	if _, _, err := sealed.Parse(r.SealedSecret.Value); err != nil {
 		return fmt.Errorf("sealed secret %q: value must be sealed with `miabi secrets seal`: %w", r.Metadata.Name, err)
+	}
+	return nil
+}
+
+// NormalizeGitURL trims a repository URL and appends ".git" when missing, as the credential store
+// does on save, so an unsuffixed manifest URL converges instead of drifting.
+func NormalizeGitURL(raw string) string {
+	u := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if u != "" && !strings.HasSuffix(strings.ToLower(u), ".git") {
+		u += ".git"
+	}
+	return u
+}
+
+func (r *Resource) validateGitRepository() error {
+	g := r.GitRepository
+	if g == nil {
+		return fmt.Errorf("gitrepository %q: spec is required", r.Metadata.Name)
+	}
+	switch {
+	case g.URL == "":
+		return fmt.Errorf("gitrepository %q: url is required", r.Metadata.Name)
+	case g.Auth != "public" && g.Auth != "token" && g.Auth != "ssh":
+		return fmt.Errorf("gitrepository %q: auth %q must be public, token or ssh", r.Metadata.Name, g.Auth)
+	case g.Auth == "public" && g.SecretRef != "":
+		return fmt.Errorf("gitrepository %q: a public repository takes no secretRef", r.Metadata.Name)
+	case g.Auth != "public" && g.SecretRef == "":
+		return fmt.Errorf("gitrepository %q: auth %s needs secretRef, the Secret or SealedSecret holding the credential", r.Metadata.Name, g.Auth)
+	case g.SecretRef != "" && !nameRe.MatchString(g.SecretRef):
+		return fmt.Errorf("gitrepository %q: secretRef %q must be a resource name matching %s", r.Metadata.Name, g.SecretRef, nameRe)
 	}
 	return nil
 }
