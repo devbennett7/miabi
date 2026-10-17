@@ -887,6 +887,8 @@ func renderMiddlewares(mws []models.Middleware) []proxy.RenderedMiddleware {
 			logger.Error("middleware: decrypt secret rule failed; skipping", "workspace", m.WorkspaceID, "middleware", m.Name, "error", err)
 			continue
 		}
+		// A rule saved before Goma dropped a key would otherwise fail the whole workspace file.
+		rule = mwcatalog.DropRetired(m.Type, rule)
 		out = append(out, proxy.RenderedMiddleware{ID: m.ID, WorkspaceID: m.WorkspaceID, Name: m.Name, Type: m.Type, Paths: m.Paths, Rule: rule})
 	}
 	return out

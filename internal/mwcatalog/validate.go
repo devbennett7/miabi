@@ -29,6 +29,36 @@ import (
 // descriptor. Handlers map it to 422 MIDDLEWARE_INVALID_RULE.
 var ErrInvalidRule = errors.New("invalid middleware rule")
 
+// retired lists rule keys Goma no longer accepts. They are dropped rather than refused, so a
+// middleware saved before the change still renders and can still be edited.
+var retired = map[string][]string{
+	// Goma sends X-Goma-Country to every app itself when the gateway's countryHeader is on.
+	"geoBlock": {"addCountryHeader"},
+}
+
+// DropRetired returns rule without the keys Goma no longer accepts for mwType. It returns rule
+// itself when there are none to drop.
+func DropRetired(mwType string, rule map[string]any) map[string]any {
+	keys := retired[mwType]
+	drop := false
+	for _, k := range keys {
+		if _, ok := rule[k]; ok {
+			drop = true
+		}
+	}
+	if !drop {
+		return rule
+	}
+	out := make(map[string]any, len(rule))
+	for k, v := range rule {
+		out[k] = v
+	}
+	for _, k := range keys {
+		delete(out, k)
+	}
+	return out
+}
+
 // Validate checks a rule against a catalogued type, returning nil for an uncatalogued one (the
 // advanced passthrough). A catalogued type is checked for required keys, value types and unknown
 // keys, so a malformed rule can't render into the workspace file and take every route offline.

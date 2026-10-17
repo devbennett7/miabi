@@ -77,7 +77,7 @@ func TestValidate(t *testing.T) {
 		{"userAgentBlock wrong type", "userAgentBlock", map[string]any{"userAgents": "curl"}, true},
 		{"userAgentBlock unknown key", "userAgentBlock", map[string]any{"userAgents": []any{"curl"}, "bogus": 1}, true},
 		{"geoBlock valid", "geoBlock", map[string]any{"action": "ALLOW", "countries": []any{"US", "FR"}}, false},
-		{"geoBlock full", "geoBlock", map[string]any{"action": "DENY", "countries": []any{"CN"}, "allowUnknown": false, "addCountryHeader": "X-Country-Code", "statusCode": float64(451), "message": "no"}, false},
+		{"geoBlock full", "geoBlock", map[string]any{"action": "DENY", "countries": []any{"CN"}, "allowUnknown": false, "statusCode": float64(451), "message": "no"}, false},
 		{"geoBlock missing countries", "geoBlock", map[string]any{"action": "ALLOW"}, true},
 		{"geoBlock bad country code", "geoBlock", map[string]any{"action": "ALLOW", "countries": []any{"USA"}}, true},
 		{"geoBlock bad action", "geoBlock", map[string]any{"action": "MAYBE", "countries": []any{"US"}}, true},
@@ -312,5 +312,27 @@ func TestPairAndMapFieldsAreLabelled(t *testing.T) {
 	}
 	for _, d := range All() {
 		check(d.Type, d.Fields)
+	}
+}
+
+// A rule saved while Goma still took addCountryHeader keeps rendering and editing without it.
+func TestDropRetired(t *testing.T) {
+	legacy := map[string]any{"action": "DENY", "countries": []any{"CN"}, "addCountryHeader": "X-Country-Code"}
+	got := DropRetired("geoBlock", legacy)
+	if _, ok := got["addCountryHeader"]; ok {
+		t.Fatalf("addCountryHeader survived: %v", got)
+	}
+	if _, ok := legacy["addCountryHeader"]; !ok {
+		t.Fatal("the stored rule was modified in place")
+	}
+	if err := Validate("geoBlock", got); err != nil {
+		t.Fatalf("a legacy rule without the retired key = %v, want valid", err)
+	}
+	clean := map[string]any{"action": "ALLOW", "countries": []any{"FR"}}
+	if got := DropRetired("geoBlock", clean); len(got) != 2 {
+		t.Fatalf("a current rule changed: %v", got)
+	}
+	if got := DropRetired("rateLimit", map[string]any{"addCountryHeader": "x"}); len(got) != 1 {
+		t.Fatal("another type's keys were dropped")
 	}
 }
