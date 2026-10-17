@@ -7,26 +7,44 @@ on:
 permissions:
   contents: read
 
-# Version of the gateway image Miabi ships alongside itself. The literal here is
-# the default and the reviewable record of what this release was tested against;
-# a repository (or environment) variable of the same name overrides it without a
-# code change — useful to re-cut a release against a patched dependency.
+# The Goma Gateway a release provisions is the stable one on versions.miabi.io when the tag is
+# built, baked into the binary (pkg/bundled) so each release still pins a concrete version. Publish
+# a new gateway in the versions repo to move it. A repository variable overrides it, to re-cut a
+# release against a specific gateway:
 #
-#   gh variable set GOMA_VERSION --body v0.12.0
-#
-# `||` falls back when the variable is unset OR set to the empty string.
-env:
-  # The Goma Gateway release this Miabi release is tested against. Prefer bumping
-  # the default in a PR (with a test run) over tracking Goma's `latest` —
-  # otherwise every Goma release silently reaches Miabi users on Goma's schedule,
-  # not ours.
-  GOMA_VERSION: ${{ vars.GOMA_VERSION || 'v1.1.0' }}
+#   gh variable set GOMA_VERSION --body v1.1.2
 
 jobs:
+  versions:
+    runs-on: ubuntu-latest
+    outputs:
+      gateway: ${{ steps.gateway.outputs.version }}
+    steps:
+      - name: Resolve the gateway version
+        id: gateway
+        env:
+          OVERRIDE: ${{ vars.GOMA_VERSION }}
+        run: |
+          set -euo pipefail
+          v="${OVERRIDE}"
+          if [ -z "$v" ]; then
+            v="v$(curl -fsSL https://versions.miabi.io/v1/index.json | jq -er '.components.gateway.stable.version')"
+          fi
+          # It may come from a repository variable, so validate rather than trust it.
+          case "$v" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::gateway version must look like v1.2.3, got '$v'"; exit 1 ;;
+          esac
+          echo "Gateway: $v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
   release:
     runs-on: ubuntu-latest
+    needs: versions
     permissions:
       contents: write
+    env:
+      GOMA_VERSION: ${{ needs.versions.outputs.gateway }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -61,6 +79,9 @@ jobs:
   # unsuffixed — there is no `-ce`/`-ee` split.
   image:
     runs-on: ubuntu-latest
+    needs: versions
+    env:
+      GOMA_VERSION: ${{ needs.versions.outputs.gateway }}
     steps:
       - uses: actions/checkout@v7
 
@@ -105,6 +126,7 @@ jobs:
             BUILD_DATE=${{ env.BUILD_DATE }}
             GO_TAGS=enterprise
             LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
+            GOMA_VERSION=${{ env.GOMA_VERSION }}
           tags: |
             miabi/miabi:${{ env.VERSION }}-rootless
             ${{ env.PRERELEASE == 'false' && 'miabi/miabi:rootless' || '' }}
@@ -124,6 +146,7 @@ jobs:
             BUILD_DATE=${{ env.BUILD_DATE }}
             GO_TAGS=enterprise
             LICENSE_PUBLIC_KEY=${{ vars.LICENSE_PUBLIC_KEY }}
+            GOMA_VERSION=${{ env.GOMA_VERSION }}
           tags: |
             miabi/miabi:${{ env.VERSION }}
             ${{ env.PRERELEASE == 'false' && 'miabi/miabi:latest' || '' }}
@@ -132,20 +155,17 @@ jobs:
 
   publish-version:
     runs-on: ubuntu-latest
-    needs: [release, image]
+    needs: [versions, release, image]
     permissions:
       contents: read
+    env:
+      GOMA_VERSION: ${{ needs.versions.outputs.gateway }}
     steps:
       - uses: docker/setup-buildx-action@v4
 
       - name: Verify every published image exists
         run: |
           set -euo pipefail
-          # GOMA_VERSION may come from a repository variable, so validate rather than trust it.
-          case "${GOMA_VERSION}" in
-            v[0-9]*) ;;
-            *) echo "::error::GOMA_VERSION must look like v1.2.3, got '${GOMA_VERSION}'"; exit 1 ;;
-          esac
           # Query the registry itself; a manifest can lag a few seconds behind the push.
           assert_image() {
             for attempt in 1 2 3 4 5; do
@@ -177,5 +197,4 @@ jobs:
           component: miabi
           version: ${{ github.ref_name }}
           components: ${{ steps.bundle.outputs.components }}
-          also: gateway=${{ env.GOMA_VERSION }}
           token: ${{ secrets.VERSIONS_TOKEN }}

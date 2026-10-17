@@ -25,6 +25,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/miabi-io/miabi/pkg/bundled"
 	"net"
 	"net/url"
 	"slices"
@@ -75,13 +76,15 @@ const (
 
 const helperImage = "busybox:1.36"
 
+// DefaultGatewayImage is set at build time from versions.miabi.io (see package bundled).
+var DefaultGatewayImage = bundled.GatewayImage()
+
 // Default images. Overridable in the manifest; pinned here so a bare `miabi setup` is reproducible
 // rather than tracking whatever :latest happens to be. NOTE the tags carry no leading "v": git tags do
 // (v0.11.0), Docker tags do not — the git form produced an image reference that does not exist.
 const (
 	DefaultPostgresImage = "postgres:17-alpine"
 	DefaultRedisImage    = "redis:7-alpine"
-	DefaultGatewayImage  = "jkaninda/goma-gateway:1.1.1"
 	DefaultRunnerImage   = "miabi/runner:latest"
 	DefaultNetwork       = "miabi-proxy"
 	// LegacyNetwork is the proxy network's name before it became DefaultNetwork. Installs created
