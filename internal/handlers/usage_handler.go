@@ -101,6 +101,9 @@ type WorkspaceUsage struct {
 		// offer the replicated "service" runtime when creating an app. Not a plan
 		// capability — a platform-level flag exposed here for any workspace member.
 		ClusterEnabled bool `json:"cluster_enabled"`
+		// ServiceRuntime reports whether this workspace may run an app as a replicated service: the
+		// cluster is on and the plan allows it.
+		ServiceRuntime bool `json:"service_runtime"`
 	} `json:"capabilities"`
 
 	// The database budget, summed over instance limits and apart from the apps' CPU and memory.
@@ -159,6 +162,7 @@ func (h *UsageHandler) Get(c *okapi.Context) error {
 	u.Capabilities.OfficialImageUser = l.AllowOfficialImageUser
 	u.Capabilities.RequireNonRoot = h.quota.RequireNonRootUser(wsID, false)
 	u.Capabilities.ClusterEnabled = h.swarmAvailable(c, wsID)
+	u.Capabilities.ServiceRuntime = u.Capabilities.ClusterEnabled && (!u.Enforced || l.AllowServiceRuntime)
 	return ok(c, u)
 }
 

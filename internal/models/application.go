@@ -723,14 +723,17 @@ type Release struct {
 	Version       int    `json:"version" gorm:"index:idx_release_app_version,unique;not null"`
 	Image         string `json:"image" gorm:"not null"`
 	ContainerID   string `json:"container_id"`
-	Active        bool   `json:"active" gorm:"not null;default:false"`
-	Adopted       bool   `json:"adopted" gorm:"not null;default:false"`
-	Pinned        bool   `json:"pinned" gorm:"not null;default:false"`
-	Digest        string `json:"digest,omitempty"`                       // sha256:… the release ran
-	Commit        string `json:"commit,omitempty"`                       // source commit, when known
-	PipelineRunID *uint  `json:"pipeline_run_id,omitempty" gorm:"index"` // producing run
-	ImageID       *uint  `json:"image_id,omitempty" gorm:"index"`        // catalog artifact
-	EnvironmentID *uint  `json:"environment_id,omitempty" gorm:"index"`  // promotion stage
+	// RuntimeKind is the runtime the release ran under, so ContainerID is read as a container or a
+	// service id when the release is retired.
+	RuntimeKind   RuntimeKind `json:"runtime_kind" gorm:"size:16"`
+	Active        bool        `json:"active" gorm:"not null;default:false"`
+	Adopted       bool        `json:"adopted" gorm:"not null;default:false"`
+	Pinned        bool        `json:"pinned" gorm:"not null;default:false"`
+	Digest        string      `json:"digest,omitempty"`                       // sha256:… the release ran
+	Commit        string      `json:"commit,omitempty"`                       // source commit, when known
+	PipelineRunID *uint       `json:"pipeline_run_id,omitempty" gorm:"index"` // producing run
+	ImageID       *uint       `json:"image_id,omitempty" gorm:"index"`        // catalog artifact
+	EnvironmentID *uint       `json:"environment_id,omitempty" gorm:"index"`  // promotion stage
 
 	CreatedAt time.Time `json:"created_at"`
 }

@@ -81,43 +81,46 @@ type PlanPlacement struct {
 // Plan is an admin-defined per-workspace quota + capability template. Numeric
 // limits use -1 for unlimited and 0 for none; capability booleans gate features.
 type Plan struct {
-	ID                        uint          `json:"id" gorm:"primaryKey"`
-	Name                      string        `json:"name" gorm:"uniqueIndex;not null"`
-	Description               string        `json:"description"`
-	IsDefault                 bool          `json:"is_default" gorm:"not null;default:false"` // applied to workspaces with no plan
-	IsActive                  bool          `json:"is_active" gorm:"not null;default:true"`
-	System                    bool          `json:"system" gorm:"not null;default:false"`
-	MaxApps                   int           `json:"max_apps" gorm:"not null;default:0"`
-	MaxDatabaseInstances      int           `json:"max_database_instances" gorm:"not null;default:0"`
-	MaxCronJobs               int           `json:"max_cron_jobs" gorm:"not null;default:0"`
-	MaxVolumes                int           `json:"max_volumes" gorm:"not null;default:0"`
-	MaxNetworks               int           `json:"max_networks" gorm:"not null;default:0"`
-	MaxAPIKeys                int           `json:"max_api_keys" gorm:"not null;default:0"`
-	MaxMembers                int           `json:"max_members" gorm:"not null;default:0"`
-	MaxDatabasesPerInstance   int           `json:"max_databases_per_instance" gorm:"not null;default:0"`
-	MaxCPUCores               int           `json:"max_cpu_cores" gorm:"not null;default:0"`
-	MaxMemoryMB               int           `json:"max_memory_mb" gorm:"not null;default:0"`
-	MaxDatabaseInstanceSizeMB int           `json:"max_database_instance_size_mb" gorm:"not null;default:0"`
-	MaxStorageMB              int           `json:"max_storage_mb" gorm:"not null;default:0"`
-	MaxRunners                int           `json:"max_runners" gorm:"not null;default:0"`
-	MaxGPUs                   int           `json:"max_gpus" gorm:"not null;default:0"`
-	MaxDatabaseCPUCores       int           `json:"max_database_cpu_cores" gorm:"not null;default:-1"` // database budget, apart from the apps'
-	MaxDatabaseMemoryMB       int           `json:"max_database_memory_mb" gorm:"not null;default:-1"` // -1 by default: older plans stay unchanged
-	AllowCustomTLS            bool          `json:"allow_custom_tls" gorm:"not null;default:false"`
-	AllowPrivilegedHostMounts bool          `json:"allow_privileged_host_mounts" gorm:"not null;default:false"`
-	AllowShellExec            bool          `json:"allow_shell_exec" gorm:"not null;default:false"`
-	AllowSharedStorage        bool          `json:"allow_shared_storage" gorm:"not null;default:false"`
-	AllowDNSProviders         bool          `json:"allow_dns_providers" gorm:"not null;default:false"`
-	AllowCustomLabels         bool          `json:"allow_custom_labels" gorm:"not null;default:false"`
-	AllowPlatformRunners      bool          `json:"allow_platform_runners" gorm:"not null;default:false"`
-	AllowCustomBuilder        bool          `json:"allow_custom_builder" gorm:"not null;default:false"`
-	SecurityProfile           string        `json:"security_profile" gorm:"not null;default:'default'"`
-	AllowOfficialImageUser    bool          `json:"allow_official_image_user" gorm:"not null;default:false"`
-	AllowGPU                  bool          `json:"allow_gpu" gorm:"not null;default:false"`
-	Placement                 PlanPlacement `json:"placement" gorm:"type:text;serializer:json"`
-	DatabaseSizes             []uint        `json:"database_sizes" gorm:"type:text;serializer:json"`
-	StorageClasses            []string      `json:"storage_classes" gorm:"type:text;serializer:json"`
-	DefaultStorageClass       string        `json:"default_storage_class"`
+	ID                        uint   `json:"id" gorm:"primaryKey"`
+	Name                      string `json:"name" gorm:"uniqueIndex;not null"`
+	Description               string `json:"description"`
+	IsDefault                 bool   `json:"is_default" gorm:"not null;default:false"` // applied to workspaces with no plan
+	IsActive                  bool   `json:"is_active" gorm:"not null;default:true"`
+	System                    bool   `json:"system" gorm:"not null;default:false"`
+	MaxApps                   int    `json:"max_apps" gorm:"not null;default:0"`
+	MaxDatabaseInstances      int    `json:"max_database_instances" gorm:"not null;default:0"`
+	MaxCronJobs               int    `json:"max_cron_jobs" gorm:"not null;default:0"`
+	MaxVolumes                int    `json:"max_volumes" gorm:"not null;default:0"`
+	MaxNetworks               int    `json:"max_networks" gorm:"not null;default:0"`
+	MaxAPIKeys                int    `json:"max_api_keys" gorm:"not null;default:0"`
+	MaxMembers                int    `json:"max_members" gorm:"not null;default:0"`
+	MaxDatabasesPerInstance   int    `json:"max_databases_per_instance" gorm:"not null;default:0"`
+	MaxCPUCores               int    `json:"max_cpu_cores" gorm:"not null;default:0"`
+	MaxMemoryMB               int    `json:"max_memory_mb" gorm:"not null;default:0"`
+	MaxDatabaseInstanceSizeMB int    `json:"max_database_instance_size_mb" gorm:"not null;default:0"`
+	MaxStorageMB              int    `json:"max_storage_mb" gorm:"not null;default:0"`
+	MaxRunners                int    `json:"max_runners" gorm:"not null;default:0"`
+	MaxGPUs                   int    `json:"max_gpus" gorm:"not null;default:0"`
+	MaxDatabaseCPUCores       int    `json:"max_database_cpu_cores" gorm:"not null;default:-1"` // database budget, apart from the apps'
+	MaxDatabaseMemoryMB       int    `json:"max_database_memory_mb" gorm:"not null;default:-1"` // -1 by default: older plans stay unchanged
+	AllowCustomTLS            bool   `json:"allow_custom_tls" gorm:"not null;default:false"`
+	AllowPrivilegedHostMounts bool   `json:"allow_privileged_host_mounts" gorm:"not null;default:false"`
+	AllowShellExec            bool   `json:"allow_shell_exec" gorm:"not null;default:false"`
+	AllowSharedStorage        bool   `json:"allow_shared_storage" gorm:"not null;default:false"`
+	AllowDNSProviders         bool   `json:"allow_dns_providers" gorm:"not null;default:false"`
+	AllowCustomLabels         bool   `json:"allow_custom_labels" gorm:"not null;default:false"`
+	AllowPlatformRunners      bool   `json:"allow_platform_runners" gorm:"not null;default:false"`
+	AllowCustomBuilder        bool   `json:"allow_custom_builder" gorm:"not null;default:false"`
+	SecurityProfile           string `json:"security_profile" gorm:"not null;default:'default'"`
+	AllowOfficialImageUser    bool   `json:"allow_official_image_user" gorm:"not null;default:false"`
+	AllowGPU                  bool   `json:"allow_gpu" gorm:"not null;default:false"`
+	// AllowServiceRuntime gates running an app as a replicated Swarm service; the container runtime is
+	// always allowed. Defaults on so existing plans keep the runtime they always had.
+	AllowServiceRuntime bool          `json:"allow_service_runtime" gorm:"not null;default:true"`
+	Placement           PlanPlacement `json:"placement" gorm:"type:text;serializer:json"`
+	DatabaseSizes       []uint        `json:"database_sizes" gorm:"type:text;serializer:json"`
+	StorageClasses      []string      `json:"storage_classes" gorm:"type:text;serializer:json"`
+	DefaultStorageClass string        `json:"default_storage_class"`
 	// PlatformRunners names the shared runners this plan may build on. Empty offers every shared
 	// runner, so an existing plan keeps the whole pool. It refines AllowPlatformRunners rather than
 	// replacing it: without that capability no shared runner is in scope at all. A workspace's own
@@ -156,6 +159,7 @@ type WorkspaceQuota struct {
 	AllowPlatformRunners      *bool          `json:"allow_platform_runners,omitempty"`
 	AllowCustomBuilder        *bool          `json:"allow_custom_builder,omitempty"`
 	AllowGPU                  *bool          `json:"allow_gpu,omitempty"`
+	AllowServiceRuntime       *bool          `json:"allow_service_runtime,omitempty"`
 	SecurityProfile           *string        `json:"security_profile,omitempty" enum:"default,restricted"`      // nil = inherit plan
 	AllowOfficialImageUser    *bool          `json:"allow_official_image_user,omitempty"`                       // nil = inherit plan
 	Placement                 *PlanPlacement `json:"placement,omitempty" gorm:"type:text;serializer:json"`      // nil = inherit plan

@@ -35,7 +35,7 @@ import EnvVarModal from '@/components/EnvVarModal.vue'
 import RouteFormModal from '@/components/RouteFormModal.vue'
 import CanaryPanel from '@/components/CanaryPanel.vue'
 import AppAccessPanel from '@/components/AppAccessPanel.vue'
-import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, Network, Stack, Volume, StatsSample, Registry, GitRepository, AppEvent, AppPort, LastDeploy, PortBinding, WorkspacePortPolicy, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, ReconcilePolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, DatabaseInstance, LogicalDatabase, NodePlacement, PipelineDefinition, CapabilityCatalog } from '@/api/types'
+import type { Application, AppOverview, Deployment, Release, AppEnvVar, Route, Network, Stack, Volume, StatsSample, Registry, GitRepository, AppEvent, AppPort, LastDeploy, PortBinding, WorkspacePortPolicy, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, ReconcilePolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, DatabaseInstance, LogicalDatabase, NodePlacement, PipelineDefinition, CapabilityCatalog, RuntimeKind, RuntimePreflight } from '@/api/types'
 import AppModal from '@/components/AppModal.vue'
 import { fmtSize } from '@/utils/format'
 import { copyText } from '@/utils/clipboard'
@@ -988,7 +988,9 @@ async function loadApp() {
     customLabelsAllowed.value = usage.capabilities.custom_labels
     gpuAllowed.value = !!usage.limits.allow_gpu
     requireNonRoot.value = !!usage.capabilities.require_non_root
+    serviceRuntimeAllowed.value = !!usage.capabilities.service_runtime
   } catch {
+    serviceRuntimeAllowed.value = false
     shellExecAllowed.value = false
     customLabelsAllowed.value = false
     gpuAllowed.value = false
@@ -1885,6 +1887,65 @@ const nodePlacement = computed(() => app.value?.nodes ?? [])
 const nodePlacementLabel = computed(() =>
   nodePlacement.value.map((n: NodePlacement) => `${n.name} (${n.tasks})`).join(' · '),
 )
+// Runtime switch (Settings → Runtime): a dry run on every change, then a redeploy that hands over.
+const serviceRuntimeAllowed = ref(false)
+const runtimeTarget = ref<RuntimeKind>('service')
+const runtimeReplicas = ref(1)
+const runtimePreflight = ref<RuntimePreflight | null>(null)
+const runtimeBusy = ref(false)
+const runtimeManaged = computed(() => ['gitops', 'apply'].includes(app.value?.metadata?.['miabi.io/managed-by'] ?? ''))
+watch(() => app.value?.runtime_kind, (kind) => {
+  runtimeTarget.value = kind === 'service' ? 'container' : 'service'
+  runtimeReplicas.value = Math.max(1, app.value?.replicas ?? 1)
+  runtimePreflight.value = null
+}, { immediate: true })
+let preflightSeq = 0
+async function checkRuntime() {
+  if (!wid.value || !app.value || runtimeTarget.value === app.value.runtime_kind) {
+    runtimePreflight.value = null
+    return
+  }
+  const seq = ++preflightSeq
+  try {
+    const res = await appApi.changeRuntime(wid.value, appId.value, {
+      runtime: runtimeTarget.value, replicas: runtimeTarget.value === 'service' ? runtimeReplicas.value : undefined, dry_run: true,
+    })
+    if (seq === preflightSeq) runtimePreflight.value = res.data.data.preflight
+  } catch (e) {
+    if (seq === preflightSeq) runtimePreflight.value = null
+    notify.apiError(e)
+  }
+}
+async function applyRuntime() {
+  const p = runtimePreflight.value
+  if (!wid.value || !app.value || !p || p.blockers.length) return
+  const target = p.to === 'service' ? t('appDetail.runtime.service') : t('appDetail.runtime.container')
+  if (!(await askConfirm({
+    title: t('appDetail.runtime.confirmTitle', { runtime: target }),
+    message: !p.redeploy ? t('appDetail.runtime.confirmSaveOnly')
+      : p.strategy === 'recreate' ? t('appDetail.runtime.confirmRecreate') : t('appDetail.runtime.confirmRolling'),
+    confirmLabel: p.redeploy ? t('appDetail.runtime.convertRedeploy') : t('appDetail.runtime.convert'),
+    cancelLabel: t('action.cancel'),
+    variant: 'primary',
+  }))) return
+  runtimeBusy.value = true
+  try {
+    const res = (await appApi.changeRuntime(wid.value, appId.value, {
+      runtime: p.to, replicas: p.to === 'service' ? runtimeReplicas.value : undefined,
+    })).data.data
+    notify.success(t('appDetail.runtime.changed', { runtime: target }))
+    await loadApp()
+    if (res.deployment) {
+      tab.value = 'deployments'
+      streamLogs(res.deployment.id)
+    }
+  } catch (e) {
+    notify.apiError(e)
+  } finally {
+    runtimeBusy.value = false
+  }
+}
+
 const scaleBusy = ref(false)
 async function scaleBy(delta: number) {
   if (!wid.value || scaleBusy.value) return
@@ -3389,6 +3450,65 @@ async function detachDatabase(d: AppDatabase) {
             {{ savingSettings ? 'Saving…' : 'Save settings' }}
           </button>
           <p v-else class="text-muted text-sm">{{ $t('appDetail.settings.needsDeveloper') }}</p>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-header"><h2>{{ $t('appDetail.runtime.title') }}</h2></div>
+        <div class="card-body" style="max-width: 560px">
+          <p class="form-hint" style="margin-top: 0">
+            {{ $t('appDetail.runtime.current', { runtime: isService ? $t('appDetail.runtime.service') : $t('appDetail.runtime.container') }) }}
+          </p>
+          <p v-if="runtimeManaged" class="text-muted text-sm">{{ $t('appDetail.runtime.managed') }}</p>
+          <template v-else>
+            <div class="form-group">
+              <div class="strategy-options">
+                <label class="strategy-option" :class="{ active: runtimeTarget === 'container' }">
+                  <input v-model="runtimeTarget" type="radio" value="container" :disabled="!ws.canEdit" @change="checkRuntime" />
+                  <span>
+                    <span class="strategy-name">{{ $t('appDetail.runtime.container') }}</span>
+                    <span class="strategy-hint">{{ $t('appDetail.runtime.containerHint') }}</span>
+                  </span>
+                </label>
+                <label class="strategy-option" :class="{ active: runtimeTarget === 'service', unavailable: !isService && !serviceRuntimeAllowed }">
+                  <input v-model="runtimeTarget" type="radio" value="service" :disabled="!ws.canEdit || (!isService && !serviceRuntimeAllowed)" @change="checkRuntime" />
+                  <span>
+                    <span class="strategy-name">{{ $t('appDetail.runtime.service') }}</span>
+                    <span class="strategy-hint">{{ !isService && !serviceRuntimeAllowed ? $t('appDetail.runtime.serviceUnavailable') : $t('appDetail.runtime.serviceHint') }}</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+            <div v-if="runtimeTarget === 'service' && !isService" class="form-group" style="max-width: 200px">
+              <label class="form-label">{{ $t('appDetail.runtime.replicas') }}</label>
+              <input v-model.number="runtimeReplicas" type="number" min="1" max="100" class="form-input" :disabled="!ws.canEdit" @change="checkRuntime" />
+            </div>
+            <template v-if="runtimePreflight">
+              <div v-for="b in runtimePreflight.blockers" :key="'b' + b" class="app-banner app-banner--danger" role="alert" style="margin-bottom: 8px">
+                <span class="mdi mdi-close-octagon-outline app-banner-icon"></span>
+                <div class="app-banner-content"><p class="app-banner-text">{{ b }}</p></div>
+              </div>
+              <div v-for="w in runtimePreflight.warnings" :key="'w' + w" class="app-banner app-banner--warning" style="margin-bottom: 8px">
+                <span class="mdi mdi-alert-outline app-banner-icon"></span>
+                <div class="app-banner-content"><p class="app-banner-text">{{ w }}</p></div>
+              </div>
+              <p v-if="!runtimePreflight.blockers.length" class="form-hint">
+                {{ !runtimePreflight.redeploy ? $t('appDetail.runtime.saveOnly')
+                  : runtimePreflight.strategy === 'recreate' ? $t('appDetail.runtime.recreateHint') : $t('appDetail.runtime.rollingHint') }}
+              </p>
+            </template>
+            <button
+              v-if="ws.canEdit && runtimeTarget !== app.runtime_kind"
+              class="btn btn-primary"
+              :disabled="runtimeBusy || !runtimePreflight || runtimePreflight.blockers.length > 0"
+              @click="applyRuntime"
+            >
+              {{ runtimeBusy ? $t('appDetail.runtime.switching') : runtimePreflight?.redeploy === false ? $t('appDetail.runtime.convert') : $t('appDetail.runtime.convertRedeploy') }}
+            </button>
+            <button v-if="ws.canEdit && !runtimePreflight && runtimeTarget !== app.runtime_kind" class="btn btn-ghost" style="margin-left: 8px" @click="checkRuntime">
+              {{ $t('appDetail.runtime.check') }}
+            </button>
+          </template>
         </div>
       </div>
 

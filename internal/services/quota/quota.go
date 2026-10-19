@@ -70,6 +70,8 @@ const (
 	// Device passthrough is privileged, so this is a hard gate (and incompatible
 	// with the restricted security profile); off by default like the others.
 	CapGPU Capability = "gpu"
+	// CapServiceRuntime gates running an app as a replicated Swarm service.
+	CapServiceRuntime Capability = "service_runtime"
 )
 
 // ErrQuotaExceeded and ErrCapabilityDenied are the sentinels handlers map to a
@@ -139,6 +141,7 @@ type Limits struct {
 	AllowPlatformRunners      bool   `json:"allow_platform_runners"`
 	AllowCustomBuilder        bool   `json:"allow_custom_builder"`
 	AllowGPU                  bool   `json:"allow_gpu"`
+	AllowServiceRuntime       bool   `json:"allow_service_runtime"`
 	SecurityProfile           string `json:"security_profile"`          // "default" | "restricted"
 	AllowOfficialImageUser    bool   `json:"allow_official_image_user"` // exempt official-template apps from the restricted UID
 }
@@ -151,7 +154,7 @@ func unlimited() Limits {
 		MaxRunners: -1, MaxGPUs: -1, MaxDatabaseCPUCores: -1, MaxDatabaseMemoryMB: -1,
 		AllowCustomTLS: true, AllowPrivilegedHostMounts: true, AllowShellExec: true,
 		AllowSharedStorage: true, AllowDNSProviders: true, AllowCustomLabels: true,
-		AllowPlatformRunners: true, AllowCustomBuilder: true, AllowGPU: true,
+		AllowPlatformRunners: true, AllowCustomBuilder: true, AllowGPU: true, AllowServiceRuntime: true,
 		SecurityProfile:        models.SecurityProfileDefault, // never restrict the platform workspace
 		AllowOfficialImageUser: true,
 	}
@@ -176,6 +179,7 @@ func limitsFromPlan(p *models.Plan) Limits {
 		AllowPlatformRunners:   p.AllowPlatformRunners,
 		AllowCustomBuilder:     p.AllowCustomBuilder,
 		AllowGPU:               p.AllowGPU,
+		AllowServiceRuntime:    p.AllowServiceRuntime,
 		SecurityProfile:        models.NormalizeSecurityProfile(p.SecurityProfile),
 		AllowOfficialImageUser: p.AllowOfficialImageUser,
 	}
@@ -220,6 +224,7 @@ func applyOverride(l Limits, o *models.WorkspaceQuota) Limits {
 	setb(&l.AllowPlatformRunners, o.AllowPlatformRunners)
 	setb(&l.AllowCustomBuilder, o.AllowCustomBuilder)
 	setb(&l.AllowGPU, o.AllowGPU)
+	setb(&l.AllowServiceRuntime, o.AllowServiceRuntime)
 	setb(&l.AllowOfficialImageUser, o.AllowOfficialImageUser)
 	if o.SecurityProfile != nil {
 		l.SecurityProfile = models.NormalizeSecurityProfile(*o.SecurityProfile)
@@ -480,6 +485,8 @@ func (s *Service) Require(workspaceID uint, c Capability) error {
 		ok = l.AllowCustomBuilder
 	case CapGPU:
 		ok = l.AllowGPU
+	case CapServiceRuntime:
+		ok = l.AllowServiceRuntime
 	}
 	if ok {
 		return nil

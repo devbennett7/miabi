@@ -1071,7 +1071,8 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	// only; declarative sources stay deterministic. normalizeRuntime has already turned an unspecified kind into
 	// "container", so branch on the original input, and mark the choice for reconcileAutoRuntime to re-check.
 	interactive := app.Metadata[models.MetaManagedBy] == models.ManagedByUser
-	if defaultToServiceRuntime(in.RuntimeKind, s.isSwarm(app.ClusterID), interactive) {
+	serviceOK := s.isSwarm(app.ClusterID) && s.quota.Require(workspaceID, quota.CapServiceRuntime) == nil
+	if defaultToServiceRuntime(in.RuntimeKind, serviceOK, interactive) {
 		app.RuntimeKind = models.RuntimeService
 		app.Metadata = models.SetBuiltin(app.Metadata, models.MetaRuntimeAutoService, "true")
 	}
@@ -1459,9 +1460,10 @@ func normalizeRuntime(app *models.Application) {
 }
 
 // validateRuntime rejects an app that asks for the service runtime when cluster
-// mode is off, and guards against replicating node-local storage. stored is the
-// runtime the app already has (""=none): the rule is about the change, not the
-// state, or an app already a service could never be edited back out of one.
+// mode is off or the plan doesn't allow it, and guards against replicating
+// node-local storage. stored is the runtime the app already has (""=none): the
+// rule is about the change, not the state, or an app already a service could
+// never be edited back out of one, even on a plan that no longer allows it.
 func (s *Service) validateRuntime(app *models.Application, stored models.RuntimeKind) error {
 	if app.RuntimeKind == models.RuntimeService && !s.isSwarm(app.ClusterID) {
 		switch {
@@ -1472,6 +1474,11 @@ func (s *Service) validateRuntime(app *models.Application, stored models.Runtime
 			delete(app.Metadata, models.MetaRuntimeAutoService)
 		case stored != models.RuntimeService:
 			return ErrClusterDisabled
+		}
+	}
+	if app.RuntimeKind == models.RuntimeService && stored != models.RuntimeService {
+		if err := s.quota.Require(app.WorkspaceID, quota.CapServiceRuntime); err != nil {
+			return err
 		}
 	}
 	if app.Replicas > MaxReplicas {

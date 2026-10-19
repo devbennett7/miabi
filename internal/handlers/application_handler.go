@@ -576,6 +576,10 @@ func (h *ApplicationHandler) Update(c *okapi.Context, req *UpdateAppRequest) err
 	if err := sourceUnchangedLock(app, req); err != nil {
 		return c.AbortWithError(http.StatusConflict, err)
 	}
+	// Resending the stored runtime is fine; a change has to hand over between runtimes.
+	if rk := models.RuntimeKind(req.Body.RuntimeKind); rk != "" && rk != app.RuntimeKind {
+		return c.AbortWithError(http.StatusConflict, application.ErrRuntimeChangeViaSettings)
+	}
 	if req.Body.ContainerLabels != nil {
 		// Gated + validated + persisted here (reserved keys rejected). Sets
 		// app.ContainerLabels so the later Update save stays consistent.
@@ -1009,6 +1013,45 @@ func (h *ApplicationHandler) lifecycle(c *okapi.Context, action string) error {
 		return created(c, dep)
 	}
 	return message(c, "application "+action+" requested")
+}
+
+// ChangeRuntimeRequest moves an app between the container and service runtimes.
+type ChangeRuntimeRequest struct {
+	Body struct {
+		Runtime string `json:"runtime" required:"true" enum:"container,service"`
+		// Replicas applies to the service runtime; omitted keeps the stored count.
+		Replicas int `json:"replicas,omitempty" min:"0" max:"100"`
+		// DryRun reports what the change would do without changing anything.
+		DryRun bool `json:"dry_run,omitempty"`
+	} `json:"body"`
+}
+
+// ChangeRuntimeResult is the preflight and, once applied, the deployment doing the handover.
+type ChangeRuntimeResult struct {
+	Preflight  application.RuntimePreflight `json:"preflight"`
+	Deployment *models.Deployment           `json:"deployment,omitempty"`
+}
+
+// ChangeRuntime switches an app's runtime and redeploys it, or with dry_run only reports the preflight.
+func (h *ApplicationHandler) ChangeRuntime(c *okapi.Context, req *ChangeRuntimeRequest) error {
+	app, err := h.load(c)
+	if err != nil {
+		return c.AbortNotFound("application not found")
+	}
+	ch := application.RuntimeChange{Runtime: models.RuntimeKind(req.Body.Runtime), Replicas: req.Body.Replicas}
+	pre := h.svc.PreflightRuntime(app, ch)
+	if req.Body.DryRun {
+		return ok(c, ChangeRuntimeResult{Preflight: pre})
+	}
+	dep, err := h.svc.ChangeRuntime(app, ch, userIDPtr(c))
+	if err != nil {
+		if errors.Is(err, application.ErrRuntimeChangeBlocked) {
+			return c.AbortWithError(http.StatusConflict, err)
+		}
+		return h.mapErr(c, err)
+	}
+	h.record(c, app.WorkspaceID, "app.runtime.change", app.ID)
+	return ok(c, ChangeRuntimeResult{Preflight: pre, Deployment: dep})
 }
 
 // ScaleRequest sets a service app's replica count.
@@ -1483,6 +1526,7 @@ func (h *ApplicationHandler) mapErr(c *okapi.Context, err error) error {
 	case errors.Is(err, application.ErrResourceCap), errors.Is(err, application.ErrClusterDisabled),
 		errors.Is(err, application.ErrLocalVolumeReplicated), errors.Is(err, application.ErrVolumeUnverifiable),
 		errors.Is(err, application.ErrTooManyReplicas), errors.Is(err, models.ErrDevicesOnService),
+		errors.Is(err, application.ErrHostBindService),
 		errors.Is(err, application.ErrPortRange), errors.Is(err, models.ErrRunAsUserInvalid),
 		errors.Is(err, models.ErrRunAsUserRoot), errors.Is(err, models.ErrCapabilityNotLinux),
 		errors.Is(err, models.ErrCapabilityConflict):

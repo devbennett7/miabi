@@ -588,7 +588,7 @@ func (s *Service) importContainer(ctx context.Context, actorID, wsID, serverID u
 	version, _ := s.releases.NextVersion(app.ID)
 	rel := &models.Release{
 		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version, Image: image,
-		ContainerID: cfg.ID, Active: true, Adopted: true,
+		ContainerID: cfg.ID, Active: true, Adopted: true, RuntimeKind: models.RuntimeContainer,
 	}
 	if err := s.releases.Create(rel); err != nil {
 		r.Status, r.Message = statusFailed, "record release: "+err.Error()

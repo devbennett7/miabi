@@ -206,6 +206,11 @@ func (r *ApplicationRepository) ExistsByID(id uint) (bool, error) {
 	return count > 0, err
 }
 
+// SetRuntimeKind sets only the app's runtime, leaving the rest of the row to concurrent writers.
+func (r *ApplicationRepository) SetRuntimeKind(id uint, kind models.RuntimeKind) error {
+	return r.db.Model(&models.Application{}).Where("id = ?", id).Update("runtime_kind", kind).Error
+}
+
 func (r *ApplicationRepository) SetStatus(id uint, status models.AppStatus) error {
 	return r.db.Model(&models.Application{}).Where("id = ?", id).Update("status", status).Error
 }

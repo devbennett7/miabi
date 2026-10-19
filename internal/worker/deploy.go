@@ -639,8 +639,7 @@ func (h *DeployHandler) run(ctx context.Context, app *models.Application, dep *m
 	if dep.Strategy == models.DeployRecreate {
 		if prev, err := h.releases.FindActive(app.ID); err == nil && prev.ContainerID != "" {
 			h.log(dep, "recreate: stopping current release v"+fmt.Sprint(prev.Version))
-			_ = h.eng(app).StopContainer(context.Background(), prev.ContainerID, 10)
-			_ = h.eng(app).RemoveContainer(context.Background(), prev.ContainerID, true)
+			h.retireRelease(context.Background(), app, prev)
 		}
 	}
 
@@ -962,6 +961,15 @@ func (h *DeployHandler) deployService(ctx context.Context, app *models.Applicati
 		}
 	}
 
+	// A switch from the container runtime with recreate: the container goes first, so the two never
+	// hold the same node-local volume at once.
+	if dep.Strategy == models.DeployRecreate {
+		if prev, err := h.releases.FindActive(app.ID); err == nil && prev.RuntimeKind == models.RuntimeContainer && prev.ContainerID != "" {
+			h.log(dep, "recreate: stopping current container release v"+fmt.Sprint(prev.Version))
+			h.retireRelease(ctx, app, prev)
+		}
+	}
+
 	// Create or update in place (Swarm rolls the tasks).
 	exists := false
 	if list, lerr := mgr.ServiceList(ctx); lerr == nil {
@@ -1053,12 +1061,13 @@ func (h *DeployHandler) serviceConverge(ctx context.Context, mgr docker.Client, 
 }
 
 // releaseService records the now-active release for a cluster (service) app. The service is updated
-// in place, so there is no previous container to retire and the service id is stored on the release
-// for lifecycle ops.
+// in place and its id is stored on the release for lifecycle ops; a previous release is retired only
+// when the app just switched from the container runtime.
 func (h *DeployHandler) releaseService(app *models.Application, dep *models.Deployment, image, serviceID string) {
+	prev, _ := h.releases.FindActive(app.ID)
 	version, _ := h.releases.NextVersion(app.ID)
 	rel := &models.Release{
-		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version,
+		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version, RuntimeKind: models.RuntimeService,
 		Image: image, ContainerID: serviceID, Active: true,
 		Commit: dep.Commit, ImageID: dep.ImageID,
 	}
@@ -1089,6 +1098,13 @@ func (h *DeployHandler) releaseService(app *models.Application, dep *models.Depl
 		} else {
 			h.log(dep, "proxy routes synced")
 		}
+	}
+
+	if prev != nil && prev.RuntimeKind == models.RuntimeContainer && prev.ContainerID != "" {
+		h.log(dep, fmt.Sprintf("draining previous container release for %s", routeDrainDelay))
+		time.Sleep(routeDrainDelay)
+		h.log(dep, "retiring previous container release v"+fmt.Sprint(prev.Version))
+		h.retireRelease(context.Background(), app, prev)
 	}
 
 	h.tagReleaseImage(app, dep, version)
@@ -1127,7 +1143,7 @@ func (h *DeployHandler) releaseCanary(app *models.Application, dep *models.Deplo
 	version, _ := h.releases.NextVersion(app.ID)
 	rel := &models.Release{
 		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version,
-		Image: image, ContainerID: containerID, Active: false,
+		Image: image, ContainerID: containerID, Active: false, RuntimeKind: models.RuntimeContainer,
 		Commit: dep.Commit, ImageID: dep.ImageID,
 	}
 	if err := h.releases.Create(rel); err != nil {
@@ -1818,6 +1834,36 @@ func clampInt(v, lo, hi int) int {
 	return v
 }
 
+// revertRuntimeSwitch puts a failed runtime switch back: a rolling switch leaves the previous release
+// serving, and the app's runtime must name what actually runs or lifecycle ops would target the wrong
+// kind of workload. A recreate switch has already removed it, so there is nothing to go back to.
+func (h *DeployHandler) revertRuntimeSwitch(app *models.Application, dep *models.Deployment) {
+	active, err := h.releases.FindActive(app.ID)
+	if err != nil || active.RuntimeKind == "" || active.RuntimeKind == app.RuntimeKind {
+		return
+	}
+	if err := h.apps.SetRuntimeKind(app.ID, active.RuntimeKind); err != nil {
+		logger.Warn("failed to revert the runtime switch", "app", app.ID, "error", err)
+		return
+	}
+	h.log(dep, fmt.Sprintf("runtime switch failed; the app stays on the %s runtime", active.RuntimeKind))
+	h.emit(app, dep, models.EventSettingsUpdated, models.SeverityWarning,
+		fmt.Sprintf("Runtime switch to %s failed; the app keeps running as a %s", app.RuntimeKind, active.RuntimeKind))
+}
+
+// retireRelease stops and removes a release's workload by the runtime it ran under: a service release's
+// ContainerID is a Swarm service id, which the container calls would silently fail to remove.
+func (h *DeployHandler) retireRelease(ctx context.Context, app *models.Application, rel *models.Release) {
+	if rel.RuntimeKind == models.RuntimeService {
+		if err := h.manager(ctx, app).ServiceRemove(ctx, rel.ContainerID); err != nil {
+			logger.Warn("failed to remove the previous service release", "app", app.ID, "release", rel.ID, "error", err)
+		}
+		return
+	}
+	_ = h.eng(app).StopContainer(ctx, rel.ContainerID, 10)
+	_ = h.eng(app).RemoveContainer(ctx, rel.ContainerID, true)
+}
+
 // routeDrainDelay is how long the previous release keeps serving after the route sync: Goma reloads
 // its file provider after a 500ms debounce (flushing its DNS cache), and edge gateways pull async.
 var routeDrainDelay = 5 * time.Second
@@ -1832,7 +1878,7 @@ func (h *DeployHandler) swapAndRelease(app *models.Application, dep *models.Depl
 	version, _ := h.releases.NextVersion(app.ID)
 	rel := &models.Release{
 		ApplicationID: app.ID, DeploymentID: dep.ID, Version: version,
-		Image: image, ContainerID: containerID, Active: true,
+		Image: image, ContainerID: containerID, Active: true, RuntimeKind: models.RuntimeContainer,
 		Commit: dep.Commit, ImageID: dep.ImageID,
 	}
 	if err := h.releases.Create(rel); err != nil {
@@ -1877,8 +1923,7 @@ func (h *DeployHandler) swapAndRelease(app *models.Application, dep *models.Depl
 	}
 	if retirePrev {
 		h.log(dep, "retiring previous release v"+fmt.Sprint(prev.Version))
-		_ = h.eng(app).StopContainer(context.Background(), prev.ContainerID, 10)
-		_ = h.eng(app).RemoveContainer(context.Background(), prev.ContainerID, true)
+		h.retireRelease(context.Background(), app, prev)
 	}
 
 	h.tagReleaseImage(app, dep, version)
@@ -1920,6 +1965,9 @@ func (h *DeployHandler) fail(dep *models.Deployment, cause error) error {
 	app, _ := h.apps.FindByID(dep.ApplicationID)
 	hasCurrentRelease := app != nil && app.CurrentReleaseID != nil
 	_ = h.apps.SetStatus(dep.ApplicationID, failedAppStatus(hasCurrentRelease, dep.Strategy))
+	if app != nil && dep.Strategy != models.DeployRecreate {
+		h.revertRuntimeSwitch(app, dep)
+	}
 
 	h.log(dep, "ERROR: "+cause.Error())
 	h.publishStatus(dep, models.DeploymentFailed)
