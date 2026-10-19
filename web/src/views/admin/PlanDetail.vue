@@ -65,6 +65,12 @@ const computeFields: LimitField[] = [
   { key: 'max_gpus', label: 'planDetail.field.gpus', desc: 'planDetail.field.gpusDesc', unit: 'planDetail.unit.gpus' },
 ]
 
+// The API stores CPU in millicores; the form edits cores like every other CPU field.
+const defaultCpuCores = computed({
+  get: () => (form.value?.default_cpu_millicores ?? 0) / 1000,
+  set: (v: number) => { if (form.value) form.value.default_cpu_millicores = Math.max(0, Math.round((Number(v) || 0) * 1000)) },
+})
+
 function describe(v: number, unit?: string): string {
   if (v < 0) return t('planDetail.unlimited')
   if (v === 0) return t('planDetail.none')
@@ -266,6 +272,26 @@ function fmtDate(s?: string): string {
               <p class="form-hint">{{ $t(f.desc) }} <strong>{{ describe(form[f.key], f.unit) }}</strong></p>
             </div>
           </div>
+
+          <h3 class="section-label" style="margin-top: 24px">{{ $t('planDetail.appDefaults.title') }}</h3>
+          <p class="form-hint" style="margin-top: 0">{{ $t('planDetail.appDefaults.hint') }}</p>
+          <div class="limit-grid">
+            <div class="limit-cell">
+              <label class="form-label">{{ $t('planDetail.appDefaults.cpu') }} <span class="text-muted">({{ $t('planDetail.unit.cores') }})</span></label>
+              <input v-model.number="defaultCpuCores" type="number" min="0" step="0.1" class="form-input" />
+              <p class="form-hint">{{ defaultCpuCores > 0 ? $t('planDetail.appDefaults.cpuSet', { value: defaultCpuCores }) : $t('planDetail.appDefaults.noDefault') }}</p>
+            </div>
+            <div class="limit-cell">
+              <label class="form-label">{{ $t('planDetail.appDefaults.memory') }} <span class="text-muted">({{ $t('planDetail.unit.mb') }})</span></label>
+              <input v-model.number="form.default_memory_mb" type="number" min="0" class="form-input" />
+              <p class="form-hint">{{ form.default_memory_mb > 0 ? $t('planDetail.appDefaults.memorySet', { value: form.default_memory_mb }) : $t('planDetail.appDefaults.noDefault') }}</p>
+            </div>
+          </div>
+          <label class="checkbox-label" style="margin-top: 12px"><input v-model="form.require_resource_limits" type="checkbox" />{{ $t('planDetail.appDefaults.require') }}</label>
+          <p class="form-hint">{{ $t('planDetail.appDefaults.requireHint') }}</p>
+          <p v-if="!form.require_resource_limits && (form.max_cpu_cores >= 0 || form.max_memory_mb >= 0)" class="form-hint text-warning">
+            {{ $t('planDetail.appDefaults.requireSuggest') }}
+          </p>
         </div>
       </div>
 

@@ -989,6 +989,11 @@ async function loadApp() {
     gpuAllowed.value = !!usage.limits.allow_gpu
     requireNonRoot.value = !!usage.capabilities.require_non_root
     serviceRuntimeAllowed.value = !!usage.capabilities.service_runtime
+    planResources.value = {
+      required: usage.enforced && !!usage.limits.require_resource_limits,
+      cpuMillicores: usage.limits.default_cpu_millicores ?? 0,
+      memoryMB: usage.limits.default_memory_mb ?? 0,
+    }
   } catch {
     serviceRuntimeAllowed.value = false
     shellExecAllowed.value = false
@@ -1887,6 +1892,17 @@ const nodePlacement = computed(() => app.value?.nodes ?? [])
 const nodePlacementLabel = computed(() =>
   nodePlacement.value.map((n: NodePlacement) => `${n.name} (${n.tasks})`).join(' · '),
 )
+// The plan's app resource defaults, shown under the Resources inputs: an empty value is filled from them.
+const planResources = ref({ required: false, cpuMillicores: 0, memoryMB: 0 })
+const planResourcesHint = computed(() => {
+  const p = planResources.value
+  const parts: string[] = []
+  if (p.cpuMillicores > 0) parts.push(t('appDetail.planDefaults.cpu', { value: p.cpuMillicores / 1000 }))
+  if (p.memoryMB > 0) parts.push(t('appDetail.planDefaults.memory', { value: p.memoryMB }))
+  if (parts.length) return t('appDetail.planDefaults.filled', { defaults: parts.join(', ') })
+  return p.required ? t('appDetail.planDefaults.required') : ''
+})
+
 // Runtime switch (Settings → Runtime): a dry run on every change, then a redeploy that hands over.
 const serviceRuntimeAllowed = ref(false)
 const runtimeTarget = ref<RuntimeKind>('service')
@@ -3589,6 +3605,7 @@ async function detachDatabase(d: AppDatabase) {
               </p>
             </div>
           </div>
+          <p v-if="planResourcesHint" class="form-hint" style="margin-top: -8px">{{ planResourcesHint }}</p>
           <div v-if="gpuAllowed" class="form-row">
             <div class="form-group" style="flex: 1">
               <label class="form-label">{{ $t('appDetail.gpus') }}</label>

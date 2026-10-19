@@ -116,11 +116,17 @@ type Plan struct {
 	AllowGPU                  bool   `json:"allow_gpu" gorm:"not null;default:false"`
 	// AllowServiceRuntime gates running an app as a replicated Swarm service; the container runtime is
 	// always allowed. Defaults on so existing plans keep the runtime they always had.
-	AllowServiceRuntime bool          `json:"allow_service_runtime" gorm:"not null;default:true"`
-	Placement           PlanPlacement `json:"placement" gorm:"type:text;serializer:json"`
-	DatabaseSizes       []uint        `json:"database_sizes" gorm:"type:text;serializer:json"`
-	StorageClasses      []string      `json:"storage_classes" gorm:"type:text;serializer:json"`
-	DefaultStorageClass string        `json:"default_storage_class"`
+	AllowServiceRuntime bool `json:"allow_service_runtime" gorm:"not null;default:true"`
+	// DefaultCPUMillicores and DefaultMemoryMB fill an app's unset CPU or memory limit (0 = no default).
+	// RequireResourceLimits refuses an app that still has none, so unlimited apps can't slip past the
+	// plan's CPU and memory totals.
+	DefaultCPUMillicores  int           `json:"default_cpu_millicores" gorm:"not null;default:0"`
+	DefaultMemoryMB       int           `json:"default_memory_mb" gorm:"not null;default:0"`
+	RequireResourceLimits bool          `json:"require_resource_limits" gorm:"not null;default:false"`
+	Placement             PlanPlacement `json:"placement" gorm:"type:text;serializer:json"`
+	DatabaseSizes         []uint        `json:"database_sizes" gorm:"type:text;serializer:json"`
+	StorageClasses        []string      `json:"storage_classes" gorm:"type:text;serializer:json"`
+	DefaultStorageClass   string        `json:"default_storage_class"`
 	// PlatformRunners names the shared runners this plan may build on. Empty offers every shared
 	// runner, so an existing plan keeps the whole pool. It refines AllowPlatformRunners rather than
 	// replacing it: without that capability no shared runner is in scope at all. A workspace's own
@@ -160,6 +166,9 @@ type WorkspaceQuota struct {
 	AllowCustomBuilder        *bool          `json:"allow_custom_builder,omitempty"`
 	AllowGPU                  *bool          `json:"allow_gpu,omitempty"`
 	AllowServiceRuntime       *bool          `json:"allow_service_runtime,omitempty"`
+	DefaultCPUMillicores      *int           `json:"default_cpu_millicores,omitempty" min:"0"`
+	DefaultMemoryMB           *int           `json:"default_memory_mb,omitempty" min:"0"`
+	RequireResourceLimits     *bool          `json:"require_resource_limits,omitempty"`
 	SecurityProfile           *string        `json:"security_profile,omitempty" enum:"default,restricted"`      // nil = inherit plan
 	AllowOfficialImageUser    *bool          `json:"allow_official_image_user,omitempty"`                       // nil = inherit plan
 	Placement                 *PlanPlacement `json:"placement,omitempty" gorm:"type:text;serializer:json"`      // nil = inherit plan

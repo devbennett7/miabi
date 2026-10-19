@@ -70,9 +70,12 @@ type WorkspaceUsage struct {
 	// Enforced reports whether limits are actually applied (the platform flag).
 	Enforced bool `json:"enforced"`
 	// PlanName is the effective plan's name ("" = no plan / unlimited).
-	PlanName          string        `json:"plan_name"`
-	Limits            quota.Limits  `json:"limits"`
-	Apps              ResourceUsage `json:"apps"`
+	PlanName string        `json:"plan_name"`
+	Limits   quota.Limits  `json:"limits"`
+	Apps     ResourceUsage `json:"apps"`
+	// AppsWithoutLimits counts apps missing a CPU or memory limit: they run unbounded and the CPU and
+	// memory totals don't see them.
+	AppsWithoutLimits int64         `json:"apps_without_limits"`
 	DatabaseInstances ResourceUsage `json:"database_instances"`
 	CronJobs          ResourceUsage `json:"cron_jobs"`
 	Volumes           ResourceUsage `json:"volumes"`
@@ -122,6 +125,7 @@ func (h *UsageHandler) Get(c *okapi.Context) error {
 	l := h.quota.EffectiveLimits(wsID)
 
 	appN, _ := h.apps.CountByWorkspace(wsID)
+	unlimitedN, _ := h.apps.CountWithoutLimitsByWorkspace(wsID)
 	dbN, _ := h.dbs.CountInstancesByWorkspace(wsID)
 	cronN, _ := h.jobs.CountCronByWorkspace(wsID)
 	volN, _ := h.volumes.CountByWorkspace(wsID)
@@ -139,6 +143,7 @@ func (h *UsageHandler) Get(c *okapi.Context) error {
 		PlanName:          h.quota.EffectivePlanName(wsID),
 		Limits:            l,
 		Apps:              ResourceUsage{Used: appN, Limit: l.MaxApps},
+		AppsWithoutLimits: unlimitedN,
 		DatabaseInstances: ResourceUsage{Used: dbN, Limit: l.MaxDatabaseInstances},
 		CronJobs:          ResourceUsage{Used: cronN, Limit: l.MaxCronJobs},
 		Volumes:           ResourceUsage{Used: volN, Limit: l.MaxVolumes},

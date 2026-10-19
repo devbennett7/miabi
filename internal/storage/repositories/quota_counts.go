@@ -30,6 +30,15 @@ func (r *ApplicationRepository) CountByWorkspace(workspaceID uint) (int64, error
 	return n, err
 }
 
+// CountWithoutLimitsByWorkspace counts apps missing a CPU or a memory limit, which run unbounded and add
+// nothing to the plan's compute totals.
+func (r *ApplicationRepository) CountWithoutLimitsByWorkspace(workspaceID uint) (int64, error) {
+	var n int64
+	err := r.db.Model(&models.Application{}).
+		Where("workspace_id = ? AND (memory_bytes = 0 OR nano_cpus = 0)", workspaceID).Count(&n).Error
+	return n, err
+}
+
 func (r *VolumeRepository) CountByWorkspace(workspaceID uint) (int64, error) {
 	var n int64
 	err := r.db.Model(&models.Volume{}).Where("workspace_id = ?", workspaceID).Count(&n).Error

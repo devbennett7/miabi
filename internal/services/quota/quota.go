@@ -25,6 +25,7 @@ package quota
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/miabi-io/miabi/internal/models"
 	"github.com/miabi-io/miabi/internal/storage/repositories"
@@ -76,9 +77,11 @@ const (
 
 // ErrQuotaExceeded and ErrCapabilityDenied are the sentinels handlers map to a
 // 403 response. QuotaError carries the structured detail for counted resources.
+// ErrResourceLimitsRequired is a 400: the request is fixable by the caller.
 var (
-	ErrQuotaExceeded    = errors.New("plan limit reached")
-	ErrCapabilityDenied = errors.New("capability not allowed by plan")
+	ErrQuotaExceeded          = errors.New("plan limit reached")
+	ErrCapabilityDenied       = errors.New("capability not allowed by plan")
+	ErrResourceLimitsRequired = errors.New("the plan requires CPU and memory limits")
 )
 
 // QuotaError is returned when creating one more of a counted resource would
@@ -142,6 +145,9 @@ type Limits struct {
 	AllowCustomBuilder        bool   `json:"allow_custom_builder"`
 	AllowGPU                  bool   `json:"allow_gpu"`
 	AllowServiceRuntime       bool   `json:"allow_service_runtime"`
+	DefaultCPUMillicores      int    `json:"default_cpu_millicores"` // 0 = no default
+	DefaultMemoryMB           int    `json:"default_memory_mb"`      // 0 = no default
+	RequireResourceLimits     bool   `json:"require_resource_limits"`
 	SecurityProfile           string `json:"security_profile"`          // "default" | "restricted"
 	AllowOfficialImageUser    bool   `json:"allow_official_image_user"` // exempt official-template apps from the restricted UID
 }
@@ -180,6 +186,9 @@ func limitsFromPlan(p *models.Plan) Limits {
 		AllowCustomBuilder:     p.AllowCustomBuilder,
 		AllowGPU:               p.AllowGPU,
 		AllowServiceRuntime:    p.AllowServiceRuntime,
+		DefaultCPUMillicores:   p.DefaultCPUMillicores,
+		DefaultMemoryMB:        p.DefaultMemoryMB,
+		RequireResourceLimits:  p.RequireResourceLimits,
 		SecurityProfile:        models.NormalizeSecurityProfile(p.SecurityProfile),
 		AllowOfficialImageUser: p.AllowOfficialImageUser,
 	}
@@ -225,6 +234,9 @@ func applyOverride(l Limits, o *models.WorkspaceQuota) Limits {
 	setb(&l.AllowCustomBuilder, o.AllowCustomBuilder)
 	setb(&l.AllowGPU, o.AllowGPU)
 	setb(&l.AllowServiceRuntime, o.AllowServiceRuntime)
+	set(&l.DefaultCPUMillicores, o.DefaultCPUMillicores)
+	set(&l.DefaultMemoryMB, o.DefaultMemoryMB)
+	setb(&l.RequireResourceLimits, o.RequireResourceLimits)
 	setb(&l.AllowOfficialImageUser, o.AllowOfficialImageUser)
 	if o.SecurityProfile != nil {
 		l.SecurityProfile = models.NormalizeSecurityProfile(*o.SecurityProfile)
@@ -499,6 +511,40 @@ func (s *Service) Require(workspaceID uint, c Capability) error {
 // set while granted must stop being honored if the capability is later revoked.
 func (s *Service) CustomBuilderAllowed(workspaceID uint) bool {
 	return s.Require(workspaceID, CapCustomBuilder) == nil
+}
+
+// ResolveAppResources fills an app's unset CPU (nanoCPUs) and memory (bytes) from the plan defaults, and
+// refuses one the plan requires but has no default for. Each dimension is resolved on its own; a value
+// already set always wins. Unchanged when enforcement is off.
+func (s *Service) ResolveAppResources(workspaceID uint, memoryBytes, nanoCPUs int64) (int64, int64, error) {
+	if !s.Enabled() {
+		return memoryBytes, nanoCPUs, nil
+	}
+	return resolveAppResources(s.EffectiveLimits(workspaceID), memoryBytes, nanoCPUs)
+}
+
+func resolveAppResources(l Limits, memoryBytes, nanoCPUs int64) (int64, int64, error) {
+	if memoryBytes == 0 && l.DefaultMemoryMB > 0 {
+		memoryBytes = int64(l.DefaultMemoryMB) * bytesPerMB
+	}
+	if nanoCPUs == 0 && l.DefaultCPUMillicores > 0 {
+		nanoCPUs = int64(l.DefaultCPUMillicores) * (nanoPerCore / 1000)
+	}
+	if l.RequireResourceLimits {
+		var missing []string
+		if memoryBytes == 0 {
+			missing = append(missing, "memory")
+		}
+		if nanoCPUs == 0 {
+			missing = append(missing, "CPU")
+		}
+		if len(missing) > 0 {
+			return memoryBytes, nanoCPUs, &codedError{code: "RESOURCE_LIMITS_REQUIRED",
+				msg:  fmt.Sprintf("this workspace's plan requires a %s limit on every app", strings.Join(missing, " and ")),
+				base: ErrResourceLimitsRequired}
+		}
+	}
+	return memoryBytes, nanoCPUs, nil
 }
 
 // CheckComputeAdd verifies that adding the requested CPU (nanoCPUs) and memory

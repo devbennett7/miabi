@@ -102,6 +102,7 @@ function blank(): PlanInput {
     allow_custom_tls: true, allow_privileged_host_mounts: true, allow_shell_exec: true,
     allow_shared_storage: true, allow_dns_providers: true, allow_custom_labels: true,
     allow_platform_runners: false, allow_gpu: false, allow_service_runtime: true,
+    default_cpu_millicores: 0, default_memory_mb: 0, require_resource_limits: false,
     security_profile: 'default',
     allow_official_image_user: false,
   }
