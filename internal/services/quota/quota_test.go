@@ -171,6 +171,26 @@ func TestApplyOverride(t *testing.T) {
 	}
 }
 
+func TestServiceRuntimeCapability(t *testing.T) {
+	if limitsFromPlan(&models.Plan{AllowServiceRuntime: false}).AllowServiceRuntime {
+		t.Error("a plan without the service runtime should not grant it")
+	}
+	if !unlimited().AllowServiceRuntime {
+		t.Error("unlimited should grant the service runtime")
+	}
+	no := false
+	base := limitsFromPlan(&models.Plan{AllowServiceRuntime: true})
+	if applyOverride(base, &models.WorkspaceQuota{AllowServiceRuntime: &no}).AllowServiceRuntime {
+		t.Error("an override should be able to withdraw the service runtime")
+	}
+	if !applyOverride(base, &models.WorkspaceQuota{}).AllowServiceRuntime {
+		t.Error("a nil override should inherit the plan")
+	}
+	if err := NewService(nil, nil, nil, nil, nil, false).Require(1, CapServiceRuntime); err != nil {
+		t.Errorf("disabled Require should pass, got %v", err)
+	}
+}
+
 func TestSecurityProfileResolution(t *testing.T) {
 	// Plan profile resolves and normalizes ("" -> default).
 	if got := limitsFromPlan(&models.Plan{}).SecurityProfile; got != models.SecurityProfileDefault {

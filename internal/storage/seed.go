@@ -173,6 +173,7 @@ func SeedPlans(db *gorm.DB) error {
 			AllowCustomTLS: true, AllowPrivilegedHostMounts: false, AllowShellExec: true, AllowSharedStorage: true, AllowDNSProviders: true, AllowCustomLabels: true,
 			AllowOfficialImageUser: true,
 			AllowPlatformRunners:   true,
+			AllowServiceRuntime:    true,
 		},
 		{
 			// System: the platform's own plan for the system workspace, not part of
@@ -185,6 +186,7 @@ func SeedPlans(db *gorm.DB) error {
 			AllowCustomTLS: true, AllowPrivilegedHostMounts: true, AllowShellExec: true, AllowSharedStorage: true, AllowDNSProviders: true, AllowCustomLabels: true,
 			AllowOfficialImageUser: true,
 			AllowPlatformRunners:   true,
+			AllowServiceRuntime:    true,
 		},
 	}
 	if err := db.Create(&plans).Error; err != nil {

@@ -1,5 +1,5 @@
 import api from './client'
-import type { ApiResponse, Application, AppOverview, AppPort, Deployment, DeploymentLogHistory, Release, AppEnvVar, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, ReconcilePolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, ProcessList, RuntimeKind, ServiceUpdateConfig, PipelineRun, PipelineDefinition, CanaryRoutingPayload, CanaryRoutingResult, CanaryPreview } from './types'
+import type { ApiResponse, Application, AppOverview, AppPort, Deployment, DeploymentLogHistory, Release, AppEnvVar, AppDatabase, ConnectionInfo, DeployStrategy, RestartPolicy, ImagePullPolicy, ReconcilePolicy, BuildMethod, HealthcheckType, ResourceLimits, LiveStatus, HostMountPreset, ProcessList, RuntimeKind, ServiceUpdateConfig, PipelineRun, PipelineDefinition, CanaryRoutingPayload, CanaryRoutingResult, CanaryPreview, ChangeRuntimeResult } from './types'
 
 /**
  * What a deploy returns when the app's repository owns a pipeline: the run that
@@ -299,6 +299,10 @@ export const appApi = {
   },
   restart(ws: number, id: number) {
     return api.post<ApiResponse<Deployment | { message: string }>>(`/workspaces/${ws}/apps/${id}/restart`)
+  },
+  // Switch between the container and service runtimes; dry_run only reports the preflight.
+  changeRuntime(ws: number, id: number, body: { runtime: RuntimeKind; replicas?: number; dry_run?: boolean }) {
+    return api.post<ApiResponse<ChangeRuntimeResult>>(`/workspaces/${ws}/apps/${id}/runtime`, body)
   },
   // Scale a cluster (service) app to the given replica count (applied live).
   scale(ws: number, id: number, replicas: number) {

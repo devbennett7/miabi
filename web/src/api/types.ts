@@ -71,6 +71,8 @@ export interface Plan {
   allow_custom_labels: boolean
   allow_platform_runners: boolean
   allow_gpu: boolean
+  // Run an app as a replicated Swarm service; the container runtime is always allowed.
+  allow_service_runtime: boolean
   security_profile: SecurityProfile
   // Let apps installed from an official marketplace template keep the image's own
   // default user even under the "restricted" security profile.
@@ -155,6 +157,7 @@ export interface WorkspaceQuotaOverride {
   allow_custom_labels: boolean | null
   allow_platform_runners: boolean | null
   allow_gpu: boolean | null
+  allow_service_runtime?: boolean | null
   security_profile: SecurityProfile | null
   allow_official_image_user: boolean | null
   placement?: PlanPlacement | null
@@ -176,7 +179,7 @@ export type WorkspaceLimits = Pick<Plan,
   | 'max_database_instance_size_mb' | 'max_storage_mb' | 'max_runners' | 'max_gpus' | 'max_database_cpu_cores' | 'max_database_memory_mb'
   | 'allow_custom_tls' | 'allow_privileged_host_mounts'
   | 'allow_shell_exec' | 'allow_shared_storage' | 'allow_dns_providers' | 'allow_custom_labels' | 'allow_platform_runners' | 'allow_gpu' | 'security_profile'
-  | 'allow_official_image_user'>
+  | 'allow_official_image_user' | 'allow_service_runtime'>
 
 export interface WorkspaceUsage {
   enforced: boolean
@@ -205,6 +208,8 @@ export interface WorkspaceUsage {
     // Cluster (Swarm) mode is on — offer the replicated "service" runtime on
     // app create. A platform-level flag exposed to every workspace member here.
     cluster_enabled?: boolean
+    // The replicated "service" runtime is offered: the cluster is on and the plan allows it.
+    service_runtime?: boolean
     // This workspace's containers must drop root, so a run-as user has to be a
     // non-root numeric uid rather than any account the image happens to define.
     require_non_root?: boolean
@@ -1489,6 +1494,23 @@ export interface Application {
 // RuntimeKind is how an app runs: a single container (default) or a replicated
 // Swarm service (cluster mode).
 export type RuntimeKind = 'container' | 'service'
+
+// What switching an app's runtime would do (POST /apps/{id}/runtime, dry_run), and what stops it.
+export interface RuntimePreflight {
+  from: RuntimeKind
+  to: RuntimeKind
+  replicas: number
+  server_id: number
+  strategy: DeployStrategy
+  redeploy: boolean
+  blockers: string[]
+  warnings: string[]
+}
+
+export interface ChangeRuntimeResult {
+  preflight: RuntimePreflight
+  deployment?: Deployment
+}
 
 // ServiceUpdateConfig tunes the Swarm rolling update for a service app.
 export interface ServiceUpdateConfig {

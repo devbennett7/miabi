@@ -69,20 +69,22 @@ type PlanBody struct {
 	MaxStorageMB              int    `json:"max_storage_mb" min:"-1"`
 	MaxRunners                int    `json:"max_runners" min:"-1"`
 	// The database budget. Omitted keeps the stored value, or unlimited on create, so older clients leave it alone.
-	MaxDatabaseCPUCores       *int   `json:"max_database_cpu_cores" min:"-1"`
-	MaxDatabaseMemoryMB       *int   `json:"max_database_memory_mb" min:"-1"`
-	MaxGPUs                   int    `json:"max_gpus" min:"-1"`
-	AllowCustomTLS            bool   `json:"allow_custom_tls"`
-	AllowPrivilegedHostMounts bool   `json:"allow_privileged_host_mounts"`
-	AllowShellExec            bool   `json:"allow_shell_exec"`
-	AllowSharedStorage        bool   `json:"allow_shared_storage"`
-	AllowDNSProviders         bool   `json:"allow_dns_providers"`
-	AllowCustomLabels         bool   `json:"allow_custom_labels"`
-	AllowPlatformRunners      bool   `json:"allow_platform_runners"`
-	AllowCustomBuilder        bool   `json:"allow_custom_builder"`
-	AllowGPU                  bool   `json:"allow_gpu"`
-	SecurityProfile           string `json:"security_profile" enum:"default,restricted"`
-	AllowOfficialImageUser    bool   `json:"allow_official_image_user"` // exempt official-template apps from the restricted UID
+	MaxDatabaseCPUCores       *int `json:"max_database_cpu_cores" min:"-1"`
+	MaxDatabaseMemoryMB       *int `json:"max_database_memory_mb" min:"-1"`
+	MaxGPUs                   int  `json:"max_gpus" min:"-1"`
+	AllowCustomTLS            bool `json:"allow_custom_tls"`
+	AllowPrivilegedHostMounts bool `json:"allow_privileged_host_mounts"`
+	AllowShellExec            bool `json:"allow_shell_exec"`
+	AllowSharedStorage        bool `json:"allow_shared_storage"`
+	AllowDNSProviders         bool `json:"allow_dns_providers"`
+	AllowCustomLabels         bool `json:"allow_custom_labels"`
+	AllowPlatformRunners      bool `json:"allow_platform_runners"`
+	AllowCustomBuilder        bool `json:"allow_custom_builder"`
+	AllowGPU                  bool `json:"allow_gpu"`
+	// AllowServiceRuntime omitted keeps the stored value, or allowed on create, so older clients leave it alone.
+	AllowServiceRuntime    *bool  `json:"allow_service_runtime"`
+	SecurityProfile        string `json:"security_profile" enum:"default,restricted"`
+	AllowOfficialImageUser bool   `json:"allow_official_image_user"` // exempt official-template apps from the restricted UID
 	// Placement binds the plan to locations and a node pool (Enterprise placement_policy).
 	Placement models.PlanPlacement `json:"placement"`
 	// DatabaseSizes are the database sizes the plan offers, the first its default (Enterprise database_sizes).
@@ -190,6 +192,9 @@ func (b PlanBody) apply(p *models.Plan) {
 	p.AllowPlatformRunners = b.AllowPlatformRunners
 	p.AllowCustomBuilder = b.AllowCustomBuilder
 	p.AllowGPU = b.AllowGPU
+	if b.AllowServiceRuntime != nil {
+		p.AllowServiceRuntime = *b.AllowServiceRuntime
+	}
 	p.SecurityProfile = models.NormalizeSecurityProfile(b.SecurityProfile)
 	p.AllowOfficialImageUser = b.AllowOfficialImageUser
 	p.Placement = b.Placement
@@ -311,7 +316,8 @@ func (h *PlanHandler) Create(c *okapi.Context, req *CreatePlanRequest) error {
 	if body.IsDefault {
 		_ = h.repo.ClearDefault(nil)
 	}
-	p := &models.Plan{IsDefault: body.IsDefault, MaxDatabaseCPUCores: models.Unlimited, MaxDatabaseMemoryMB: models.Unlimited}
+	p := &models.Plan{IsDefault: body.IsDefault, MaxDatabaseCPUCores: models.Unlimited, MaxDatabaseMemoryMB: models.Unlimited,
+		AllowServiceRuntime: true}
 	body.apply(p)
 	if err := h.repo.Create(p); err != nil {
 		return c.AbortInternalServerError("failed to create plan", err)

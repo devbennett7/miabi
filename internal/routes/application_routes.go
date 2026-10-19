@@ -376,6 +376,16 @@ func (r *Router) applicationRoutes() []okapi.RouteDefinition {
 		},
 		{
 			Method:      http.MethodPost,
+			Path:        base + "/{appID}/runtime",
+			Group:       apps,
+			Middlewares: appOp(models.PermAppDeploy),
+			Handler:     okapi.H(r.h.app.ChangeRuntime),
+			Summary:     "Switch an application between the container and service runtimes (dry_run reports the preflight)",
+			Request:     &handlers.ChangeRuntimeRequest{},
+			Response:    &dto.Response[handlers.ChangeRuntimeResult]{},
+		},
+		{
+			Method:      http.MethodPost,
 			Path:        base + "/{appID}/scale",
 			Group:       apps,
 			Middlewares: appOp(models.PermAppDeploy),

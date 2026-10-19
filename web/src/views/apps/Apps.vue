@@ -49,6 +49,7 @@ const showCreate = ref(false)
 const creating = ref(false)
 // Whether any location the workspace may use runs a swarm; the fallback when locations cannot be read.
 const anySwarm = ref(false)
+const servicePlanAllowed = ref(true)
 const locations = ref<Location[]>([])
 
 interface AppForm {
@@ -126,6 +127,7 @@ const pipelineTriggerLabel = computed(() => {
 // control or the other.
 // The service runtime needs a swarm in the location the app will land in, not merely somewhere.
 const clusterEnabled = computed(() => {
+  if (!servicePlanAllowed.value) return false
   const selected = locations.value.find((l) => (form.value.location ? l.name === form.value.location : l.default))
   return selected ? !!selected.swarm : anySwarm.value
 })
@@ -204,7 +206,13 @@ async function load(id: number | null) {
     stacks.value = (await stackApi.list(id)).data.data ?? []
     // Whether the "service" runtime is offerable comes from the workspace usage
     // capabilities (readable by any member), not the platform-admin cluster status.
-    try { anySwarm.value = (await usageApi.get(id)).data.data?.capabilities?.cluster_enabled === true } catch { anySwarm.value = false }
+    try {
+      const caps = (await usageApi.get(id)).data.data?.capabilities
+      anySwarm.value = caps?.cluster_enabled === true
+      servicePlanAllowed.value = caps?.service_runtime === true || !anySwarm.value
+    } catch {
+      anySwarm.value = false
+    }
     try { locations.value = (await locationApi.list(id)).data.data?.locations ?? [] } catch { locations.value = [] }
   } catch (e) {
     notify.apiError(e)

@@ -281,6 +281,7 @@ function fmtDate(s?: string): string {
           <label class="checkbox-label"><input v-model="form.allow_custom_labels" type="checkbox" />{{ $t('plans.capLabels') }}</label>
           <label class="checkbox-label"><input v-model="form.allow_platform_runners" type="checkbox" />{{ $t('plans.capSharedRunners') }}</label>
           <label class="checkbox-label"><input v-model="form.allow_gpu" type="checkbox" />{{ $t('planDetail.capGpu') }}</label>
+          <label class="checkbox-label"><input v-model="form.allow_service_runtime" type="checkbox" />{{ $t('plans.capServiceRuntime') }}</label>
           <div class="form-group" style="margin-top: 12px; max-width: 360px">
             <label class="form-label">{{ $t('plans.containerSecurityProfile') }}<span v-if="!securityProfile.has.value" class="badge badge-neutral" style="margin-left: 6px" :title="$t('plans.restrictedRequiresEE')">
                 <span class="mdi mdi-lock-outline"></span>{{ $t('planDetail.enterprise') }}</span>

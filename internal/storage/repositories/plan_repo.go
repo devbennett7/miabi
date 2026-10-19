@@ -32,7 +32,20 @@ type PlanRepository struct {
 
 func NewPlanRepository(db *gorm.DB) *PlanRepository { return &PlanRepository{db: db} }
 
-func (r *PlanRepository) Create(p *models.Plan) error { return r.db.Create(p).Error }
+// Create inserts a plan. GORM swaps a zero value for the column default on insert, so a column whose
+// default isn't its zero value (a capability off, a 0 limit meaning "none") is written back explicitly.
+func (r *PlanRepository) Create(p *models.Plan) error {
+	allowService, dbCPU, dbMem := p.AllowServiceRuntime, p.MaxDatabaseCPUCores, p.MaxDatabaseMemoryMB
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(p).Error; err != nil {
+			return err
+		}
+		p.AllowServiceRuntime, p.MaxDatabaseCPUCores, p.MaxDatabaseMemoryMB = allowService, dbCPU, dbMem
+		return tx.Model(&models.Plan{}).Where("id = ?", p.ID).UpdateColumns(map[string]any{
+			"allow_service_runtime": allowService, "max_database_cpu_cores": dbCPU, "max_database_memory_mb": dbMem,
+		}).Error
+	})
+}
 func (r *PlanRepository) Update(p *models.Plan) error { return r.db.Save(p).Error }
 
 func (r *PlanRepository) Count() (int64, error) {

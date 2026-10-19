@@ -121,6 +121,7 @@ type CapKey =
   | 'allow_custom_labels'
   | 'allow_platform_runners'
   | 'allow_gpu'
+  | 'allow_service_runtime'
 
 // Capabilities whose "Allow" widens what a workspace may do to the host or to other tenants.
 // Granting one is worth a confirmation; raising a quota number is not, and allow_gpu is a
@@ -540,6 +541,12 @@ function eventSeverity(e: AdminEvent): string {
             <div class="form-group" style="margin-bottom: 0">
               <label class="form-label form-label-sm">GPU access</label>
               <select class="form-select" :value="override.allow_gpu === null ? '' : String(override.allow_gpu)" @change="setCap('allow_gpu', ($event.target as HTMLSelectElement).value)">
+                <option value="">Inherit</option><option value="true">Allow</option><option value="false">Deny</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label form-label-sm">{{ $t('plans.capServiceRuntime') }}</label>
+              <select class="form-select" :value="override.allow_service_runtime == null ? '' : String(override.allow_service_runtime)" @change="setCap('allow_service_runtime', ($event.target as HTMLSelectElement).value)">
                 <option value="">Inherit</option><option value="true">Allow</option><option value="false">Deny</option>
               </select>
             </div>
