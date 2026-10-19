@@ -81,6 +81,7 @@ type NumKey =
   | 'max_apps' | 'max_database_instances' | 'max_databases_per_instance' | 'max_cron_jobs'
   | 'max_volumes' | 'max_networks' | 'max_api_keys' | 'max_members' | 'max_runners' | 'max_cpu_cores' | 'max_memory_mb'
   | 'max_database_instance_size_mb' | 'max_storage_mb' | 'max_gpus' | 'max_database_cpu_cores' | 'max_database_memory_mb'
+  | 'default_cpu_millicores' | 'default_memory_mb'
 const overrideFields: { key: NumKey; label: string }[] = [
   { key: 'max_apps', label: 'Apps' },
   { key: 'max_database_instances', label: 'DB instances' },
@@ -98,6 +99,8 @@ const overrideFields: { key: NumKey; label: string }[] = [
   { key: 'max_database_instance_size_mb', label: 'DB size (MB)' },
   { key: 'max_storage_mb', label: 'Storage (MB)' },
   { key: 'max_gpus', label: 'GPUs' },
+  { key: 'default_cpu_millicores', label: 'Default app CPU (millicores)' },
+  { key: 'default_memory_mb', label: 'Default app memory (MB)' },
 ]
 const override = ref<WorkspaceQuotaOverride | null>(null)
 const overrideBaseline = ref<WorkspaceQuotaOverride | null>(null)
@@ -122,6 +125,7 @@ type CapKey =
   | 'allow_platform_runners'
   | 'allow_gpu'
   | 'allow_service_runtime'
+  | 'require_resource_limits'
 
 // Capabilities whose "Allow" widens what a workspace may do to the host or to other tenants.
 // Granting one is worth a confirmation; raising a quota number is not, and allow_gpu is a
@@ -548,6 +552,12 @@ function eventSeverity(e: AdminEvent): string {
               <label class="form-label form-label-sm">{{ $t('plans.capServiceRuntime') }}</label>
               <select class="form-select" :value="override.allow_service_runtime == null ? '' : String(override.allow_service_runtime)" @change="setCap('allow_service_runtime', ($event.target as HTMLSelectElement).value)">
                 <option value="">Inherit</option><option value="true">Allow</option><option value="false">Deny</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0">
+              <label class="form-label form-label-sm">Require app CPU &amp; memory limits</label>
+              <select class="form-select" :value="override.require_resource_limits == null ? '' : String(override.require_resource_limits)" @change="setCap('require_resource_limits', ($event.target as HTMLSelectElement).value)">
+                <option value="">Inherit</option><option value="true">Require</option><option value="false">Don't require</option>
               </select>
             </div>
             <div class="form-group" style="margin-bottom: 0">

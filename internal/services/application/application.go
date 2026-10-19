@@ -979,6 +979,11 @@ func (s *Service) Create(workspaceID uint, in CreateInput) (*models.Application,
 	} else if st != nil && !s.sameLocation(st.ClusterID, s.clusterOf(in.ServerID)) {
 		return nil, ErrStackLocation
 	}
+	mem, cpu, err := s.quota.ResolveAppResources(workspaceID, in.MemoryBytes, in.NanoCPUs)
+	if err != nil {
+		return nil, err
+	}
+	in.MemoryBytes, in.NanoCPUs = mem, cpu
 	if err := s.validateResources(in.MemoryBytes, in.NanoCPUs); err != nil {
 		return nil, err
 	}
@@ -1359,6 +1364,11 @@ func (s *Service) Update(app *models.Application) error {
 		return err
 	}
 	app.BuildMethod = buildMethodForSource(app.SourceType, app.BuildMethod)
+	mem, cpu, err := s.quota.ResolveAppResources(app.WorkspaceID, app.MemoryBytes, app.NanoCPUs)
+	if err != nil {
+		return err
+	}
+	app.MemoryBytes, app.NanoCPUs = mem, cpu
 	if err := s.validateResources(app.MemoryBytes, app.NanoCPUs); err != nil {
 		return err
 	}

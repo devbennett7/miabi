@@ -82,7 +82,12 @@ type PlanBody struct {
 	AllowCustomBuilder        bool `json:"allow_custom_builder"`
 	AllowGPU                  bool `json:"allow_gpu"`
 	// AllowServiceRuntime omitted keeps the stored value, or allowed on create, so older clients leave it alone.
-	AllowServiceRuntime    *bool  `json:"allow_service_runtime"`
+	AllowServiceRuntime *bool `json:"allow_service_runtime"`
+	// Defaults for an app's unset CPU and memory, and whether every app must end up with both. Omitted
+	// keeps the stored value (none and off on create).
+	DefaultCPUMillicores   *int   `json:"default_cpu_millicores" min:"0"`
+	DefaultMemoryMB        *int   `json:"default_memory_mb" min:"0"`
+	RequireResourceLimits  *bool  `json:"require_resource_limits"`
 	SecurityProfile        string `json:"security_profile" enum:"default,restricted"`
 	AllowOfficialImageUser bool   `json:"allow_official_image_user"` // exempt official-template apps from the restricted UID
 	// Placement binds the plan to locations and a node pool (Enterprise placement_policy).
@@ -195,6 +200,15 @@ func (b PlanBody) apply(p *models.Plan) {
 	if b.AllowServiceRuntime != nil {
 		p.AllowServiceRuntime = *b.AllowServiceRuntime
 	}
+	if b.DefaultCPUMillicores != nil {
+		p.DefaultCPUMillicores = *b.DefaultCPUMillicores
+	}
+	if b.DefaultMemoryMB != nil {
+		p.DefaultMemoryMB = *b.DefaultMemoryMB
+	}
+	if b.RequireResourceLimits != nil {
+		p.RequireResourceLimits = *b.RequireResourceLimits
+	}
 	p.SecurityProfile = models.NormalizeSecurityProfile(b.SecurityProfile)
 	p.AllowOfficialImageUser = b.AllowOfficialImageUser
 	p.Placement = b.Placement
@@ -210,6 +224,24 @@ func (b PlanBody) apply(p *models.Plan) {
 	if b.PlatformRunners != nil {
 		p.PlatformRunners = *b.PlatformRunners
 	}
+}
+
+// minDefaultMemoryMB keeps a default memory limit above what a container can start in; Docker itself refuses
+// anything under 6 MB, and a few MB more is still an instant OOM kill.
+const minDefaultMemoryMB = 32
+
+// resourceDefaultsError reports why a plan's app resource defaults can't work, or nil. A default above the
+// plan's own CPU or memory total could never be granted to a single app.
+func resourceDefaultsError(p *models.Plan) error {
+	switch {
+	case p.DefaultMemoryMB > 0 && p.DefaultMemoryMB < minDefaultMemoryMB:
+		return fmt.Errorf("the default memory must be at least %d MB", minDefaultMemoryMB)
+	case p.DefaultMemoryMB > 0 && p.MaxMemoryMB >= 0 && p.DefaultMemoryMB > p.MaxMemoryMB:
+		return fmt.Errorf("the default memory (%d MB) exceeds the plan's memory total (%d MB)", p.DefaultMemoryMB, p.MaxMemoryMB)
+	case p.DefaultCPUMillicores > 0 && p.MaxCPUCores >= 0 && p.DefaultCPUMillicores > p.MaxCPUCores*1000:
+		return fmt.Errorf("the default CPU (%d millicores) exceeds the plan's CPU total (%d cores)", p.DefaultCPUMillicores, p.MaxCPUCores)
+	}
+	return nil
 }
 
 var errUnknownDatabaseSize = errors.New("the list names a database size that does not exist")
@@ -319,6 +351,9 @@ func (h *PlanHandler) Create(c *okapi.Context, req *CreatePlanRequest) error {
 	p := &models.Plan{IsDefault: body.IsDefault, MaxDatabaseCPUCores: models.Unlimited, MaxDatabaseMemoryMB: models.Unlimited,
 		AllowServiceRuntime: true}
 	body.apply(p)
+	if err := resourceDefaultsError(p); err != nil {
+		return c.AbortBadRequest(err.Error(), err)
+	}
 	if err := h.repo.Create(p); err != nil {
 		return c.AbortInternalServerError("failed to create plan", err)
 	}
@@ -355,6 +390,9 @@ func (h *PlanHandler) Update(c *okapi.Context, req *UpdatePlanRequest) error {
 	// apply() writes every settable field. System is not one of them and must not
 	// become one: it is the platform's own bookkeeping, not an operator's choice.
 	p.System = system
+	if err := resourceDefaultsError(p); err != nil {
+		return c.AbortBadRequest(err.Error(), err)
+	}
 	if err := h.repo.Update(p); err != nil {
 		return c.AbortInternalServerError("failed to update plan", err)
 	}
@@ -499,6 +537,9 @@ func (h *PlanHandler) SetWorkspaceQuota(c *okapi.Context, req *SetWorkspaceQuota
 		if a := h.checkPlatformRunners(c, prev, req.Body.PlatformRunners); a != nil {
 			return a
 		}
+	}
+	if m := req.Body.DefaultMemoryMB; m != nil && *m > 0 && *m < minDefaultMemoryMB {
+		return c.AbortBadRequest(fmt.Sprintf("the default memory must be at least %d MB", minDefaultMemoryMB))
 	}
 	q := req.Body
 	q.WorkspaceID = wsID

@@ -832,6 +832,10 @@ watch(activeTab, (t) => loadTab(t))
             </div>
           </div>
 
+          <p v-if="usage.apps_without_limits" class="form-hint text-warning" style="margin-top: -4px">
+            <span class="mdi mdi-alert-outline"></span> {{ $t('wsSettings.appsWithoutLimits', usage.apps_without_limits) }}
+          </p>
+
           <div class="meter meter-flat">
             <div class="meter-head">
               <span>{{ $t('planDetail.field.dbsPerInstance') }}</span>

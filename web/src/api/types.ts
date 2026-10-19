@@ -73,6 +73,11 @@ export interface Plan {
   allow_gpu: boolean
   // Run an app as a replicated Swarm service; the container runtime is always allowed.
   allow_service_runtime: boolean
+  // Fill an app's unset CPU / memory limit (0 = no default); require_resource_limits refuses an app
+  // that still has none.
+  default_cpu_millicores: number
+  default_memory_mb: number
+  require_resource_limits: boolean
   security_profile: SecurityProfile
   // Let apps installed from an official marketplace template keep the image's own
   // default user even under the "restricted" security profile.
@@ -158,6 +163,9 @@ export interface WorkspaceQuotaOverride {
   allow_platform_runners: boolean | null
   allow_gpu: boolean | null
   allow_service_runtime?: boolean | null
+  default_cpu_millicores?: number | null
+  default_memory_mb?: number | null
+  require_resource_limits?: boolean | null
   security_profile: SecurityProfile | null
   allow_official_image_user: boolean | null
   placement?: PlanPlacement | null
@@ -179,13 +187,16 @@ export type WorkspaceLimits = Pick<Plan,
   | 'max_database_instance_size_mb' | 'max_storage_mb' | 'max_runners' | 'max_gpus' | 'max_database_cpu_cores' | 'max_database_memory_mb'
   | 'allow_custom_tls' | 'allow_privileged_host_mounts'
   | 'allow_shell_exec' | 'allow_shared_storage' | 'allow_dns_providers' | 'allow_custom_labels' | 'allow_platform_runners' | 'allow_gpu' | 'security_profile'
-  | 'allow_official_image_user' | 'allow_service_runtime'>
+  | 'allow_official_image_user' | 'allow_service_runtime'
+  | 'default_cpu_millicores' | 'default_memory_mb' | 'require_resource_limits'>
 
 export interface WorkspaceUsage {
   enforced: boolean
   plan_name: string
   limits: WorkspaceLimits
   apps: ResourceUsage
+  // Apps missing a CPU or memory limit: unbounded, and invisible to the CPU and memory totals.
+  apps_without_limits?: number
   database_instances: ResourceUsage
   cron_jobs: ResourceUsage
   volumes: ResourceUsage

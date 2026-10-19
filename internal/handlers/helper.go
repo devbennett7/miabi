@@ -67,6 +67,9 @@ func quotaAbort(c *okapi.Context, err error) error {
 	if errors.Is(err, quota.ErrQuotaExceeded) || errors.Is(err, quota.ErrCapabilityDenied) {
 		return c.AbortForbidden(err.Error(), err)
 	}
+	if errors.Is(err, quota.ErrResourceLimitsRequired) {
+		return c.AbortBadRequest(err.Error(), err)
+	}
 	return nil
 }
 

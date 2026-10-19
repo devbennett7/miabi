@@ -50,6 +50,7 @@ const creating = ref(false)
 // Whether any location the workspace may use runs a swarm; the fallback when locations cannot be read.
 const anySwarm = ref(false)
 const servicePlanAllowed = ref(true)
+const planResources = ref({ required: false, cpuMillicores: 0, memoryMB: 0 })
 const locations = ref<Location[]>([])
 
 interface AppForm {
@@ -76,9 +77,12 @@ interface AppForm {
   // Adopt the pipeline the repository carries at .miabi/pipeline.yaml. Only
   // offered once a probe has actually found one.
   use_pipeline: boolean
+  // Only asked for when the plan requires limits; prefilled with its defaults.
+  cpu_cores: number
+  memory_mb: number
 }
 function emptyForm(): AppForm {
-  return { name: '', server_id: 0, location: '', source_type: 'image', image: '', tag: '', git_repo: '', git_ref: '', build_method: 'auto', builder: '', registry_id: null, git_repository_id: null, stack_id: null, network_ids: [], ports: [{ container_port: 8080, protocol: 'tcp', scheme: 'http', name: '' }], runtime_kind: 'container', replicas: 1, placement_constraints: [], use_pipeline: true }
+  return { name: '', server_id: 0, location: '', source_type: 'image', image: '', tag: '', git_repo: '', git_ref: '', build_method: 'auto', builder: '', registry_id: null, git_repository_id: null, stack_id: null, network_ids: [], ports: [{ container_port: 8080, protocol: 'tcp', scheme: 'http', name: '' }], runtime_kind: 'container', replicas: 1, placement_constraints: [], use_pipeline: true, cpu_cores: 0, memory_mb: 0 }
 }
 
 // --- Repository inspection ---
@@ -207,7 +211,13 @@ async function load(id: number | null) {
     // Whether the "service" runtime is offerable comes from the workspace usage
     // capabilities (readable by any member), not the platform-admin cluster status.
     try {
-      const caps = (await usageApi.get(id)).data.data?.capabilities
+      const usage = (await usageApi.get(id)).data.data
+      const caps = usage?.capabilities
+      planResources.value = {
+        required: usage?.enforced === true && usage.limits?.require_resource_limits === true,
+        cpuMillicores: usage?.limits?.default_cpu_millicores ?? 0,
+        memoryMB: usage?.limits?.default_memory_mb ?? 0,
+      }
       anySwarm.value = caps?.cluster_enabled === true
       servicePlanAllowed.value = caps?.service_runtime === true || !anySwarm.value
     } catch {
@@ -227,6 +237,8 @@ function openCreate() {
   // In cluster mode, default new apps to the replicated service runtime (mirrors
   // the backend default); the user can still switch back to a single container.
   if (clusterEnabled.value) form.value.runtime_kind = 'service'
+  form.value.cpu_cores = planResources.value.cpuMillicores / 1000
+  form.value.memory_mb = planResources.value.memoryMB
   showCreate.value = true
 }
 
@@ -264,6 +276,11 @@ async function create() {
       // Only a service has placement constraints — a container is placed by
       // server_id above, and the Swarm scheduler is not involved.
       placement_constraints: isService.value && form.value.placement_constraints.length ? form.value.placement_constraints : undefined,
+      // Omitted otherwise: the server fills the plan's defaults itself.
+      ...(planResources.value.required ? {
+        nano_cpus: Math.max(0, Math.round((form.value.cpu_cores || 0) * 1e9)),
+        memory_bytes: Math.max(0, Math.round((form.value.memory_mb || 0) * 1024 * 1024)),
+      } : {}),
     })
     notify.success(t('apps.created'))
     showCreate.value = false
@@ -372,6 +389,17 @@ function formatCreated(ts?: string) {
               <label class="form-label">{{ $t('apps.form.name') }}</label>
               <input v-model="form.name" class="form-input" :placeholder="$t('apps.form.namePlaceholder')" required autofocus />
             </div>
+            <div v-if="planResources.required" class="form-row">
+              <div class="form-group" style="flex: 1">
+                <label class="form-label">{{ $t('appDetail.cpuLimitCores') }}</label>
+                <input v-model.number="form.cpu_cores" type="number" min="0" step="0.1" class="form-input" required />
+              </div>
+              <div class="form-group" style="flex: 1">
+                <label class="form-label">{{ $t('appDetail.memoryLimitMb') }}</label>
+                <input v-model.number="form.memory_mb" type="number" min="0" step="64" class="form-input" required />
+              </div>
+            </div>
+            <p v-if="planResources.required" class="form-hint" style="margin-top: -8px">{{ $t('apps.form.resourcesRequired') }}</p>
             <!-- Cluster runtime: only offered when cluster mode is enabled. -->
             <div v-if="clusterEnabled" class="form-row">
               <div class="form-group" style="flex: 2; margin-bottom: 0">

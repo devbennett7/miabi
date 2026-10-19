@@ -736,7 +736,13 @@
     "when": "When",
     "zeroUnlimited": "0 = unlimited.",
     "volumesHidden": "{n} volume(s) in another location or on another node are hidden — an app mounts node-local volumes from its own node only.",
-    "managedByApply": "Applied from a manifest with miabi apply"
+    "managedByApply": "Applied from a manifest with miabi apply",
+    "planDefaults": {
+      "cpu": "{value} cores",
+      "memory": "{value} MB",
+      "filled": "A value left at 0 is set to the plan's default ({defaults}) when you save.",
+      "required": "This plan requires a CPU and a memory limit."
+    }
   },
   "apps": {
     "browseMarketplace": "Browse the Marketplace",
@@ -799,7 +805,8 @@
       "sourceGit": "Git repository",
       "sourceImage": "Docker image",
       "tag": "Tag",
-      "usesSaved": "Uses the saved repository's URL and credentials."
+      "usesSaved": "Uses the saved repository's URL and credentials.",
+      "resourcesRequired": "This workspace's plan requires a CPU and a memory limit on every app."
     },
     "searchLabel": "Search applications",
     "searchPlaceholder": "Search applications by name, image, repo, or node…"
@@ -3007,7 +3014,19 @@
       "mb": "MB"
     },
     "unlimited": "Unlimited",
-    "updated": "Updated"
+    "updated": "Updated",
+    "appDefaults": {
+      "title": "App resource defaults",
+      "hint": "Filled into an app that leaves its CPU or memory limit empty, on create and on every settings save. A value the app sets always wins.",
+      "cpu": "Default CPU",
+      "memory": "Default memory",
+      "cpuSet": "Apps without a CPU limit get {value} cores.",
+      "memorySet": "Apps without a memory limit get {value} MB.",
+      "noDefault": "No default: the app runs without a limit.",
+      "require": "Require CPU and memory limits on every app",
+      "requireHint": "An app that still has no CPU or memory limit after the defaults are applied is refused.",
+      "requireSuggest": "This plan caps CPU or memory, but apps without limits don't count toward those totals. Consider requiring limits or setting defaults."
+    }
   },
   "plans": {
     "active": "active",
@@ -4153,7 +4172,8 @@
     "workspaces": "Workspaces",
     "yourOrganization": "Your organization",
     "serviceAccount": "Service account",
-    "serviceAccountHint": "A non-human account that signs in only with API keys"
+    "serviceAccountHint": "A non-human account that signs in only with API keys",
+    "appsWithoutLimits": "{n} app has no CPU or memory limit and doesn't count toward the CPU and memory totals. | {n} apps have no CPU or memory limit and don't count toward the CPU and memory totals."
   },
   "adminUnlock": {
     "title": "Unlock the admin console",
