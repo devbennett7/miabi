@@ -35,8 +35,9 @@ import (
 // The real model defaults its uid column to the Postgres-only gen_random_uuid(), which sqlite cannot
 // parse; the cap only reads the row count, so id + name is enough here (mirrors the account_test pattern).
 type serverRow struct {
-	ID   uint `gorm:"primaryKey"`
-	Name string
+	ID      uint `gorm:"primaryKey"`
+	Name    string
+	IsLocal bool
 	// Capacity columns the repository writes on create; the tests never read them, but the insert
 	// names them, so the stand-in has to carry them.
 	CPUCores         int
@@ -49,7 +50,7 @@ type serverRow struct {
 
 func (serverRow) TableName() string { return "servers" }
 
-func newRepoWithNodes(t *testing.T, n int) *repositories.ServerRepository {
+func newRepoWithNodes(t *testing.T, n int, withControlPlane bool) *repositories.ServerRepository {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
@@ -60,6 +61,11 @@ func newRepoWithNodes(t *testing.T, n int) *repositories.ServerRepository {
 	}
 	for i := 0; i < n; i++ {
 		if err := db.Create(&serverRow{Name: "node"}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if withControlPlane {
+		if err := db.Create(&serverRow{Name: "manager", IsLocal: true}).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -110,19 +116,22 @@ func TestNameBySwarmNodeID(t *testing.T) {
 // with a typed, coded error; allowed below it.
 func TestCheckNodeLimit(t *testing.T) {
 	cases := []struct {
-		name      string
-		existing  int
-		limit     int
-		wantBlock bool
+		name         string
+		existing     int
+		controlPlane bool
+		limit        int
+		wantBlock    bool
 	}{
-		{"below limit", 2, 3, false},
-		{"at limit blocks next", 3, 3, true},
-		{"over limit blocks next", 4, 3, true},
-		{"unlimited (-1)", 9, -1, false},
+		{"below limit", 2, false, 3, false},
+		{"at limit blocks next", 3, false, 3, true},
+		{"over limit blocks next", 4, false, 3, true},
+		{"unlimited (-1)", 9, false, -1, false},
+		{"control plane not counted", 2, true, 3, false},
+		{"control plane plus limit blocks next", 3, true, 3, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			s := NewService(newRepoWithNodes(t, tc.existing), nil)
+			s := NewService(newRepoWithNodes(t, tc.existing, tc.controlPlane), nil)
 			s.SetNodeLimit(func() int { return tc.limit })
 			err := s.checkNodeLimit()
 			var limitErr *NodeLimitError

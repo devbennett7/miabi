@@ -135,7 +135,7 @@ const alerts = computed<Alert[]>(() => {
       kind: 'warning',
       icon: 'mdi-server-network',
       title: 'Over the node limit',
-      body: `${v.node_usage.used} nodes are registered but the license covers ${v.node_usage.limit}. Remove nodes or upgrade the license.`,
+      body: `${v.node_usage.used} nodes are registered besides the control plane, but the license covers ${v.node_usage.limit}. Remove nodes or upgrade the license.`,
     })
   }
   return out
@@ -159,7 +159,7 @@ const meters = computed<Meter[]>(() => {
   const v = view.value
   if (!v) return []
   return [
-    { label: 'Nodes', used: v.node_usage.used, limit: v.node_usage.limit },
+    { label: 'Nodes (besides control plane)', used: v.node_usage.used, limit: v.node_usage.limit },
     { label: 'Plans', used: v.plan_usage.used, limit: v.plan_usage.limit },
     { label: 'Storage classes', used: v.storage_class_usage.used, limit: v.storage_class_usage.limit },
     { label: 'Shared runners', used: v.shared_runner_usage.used, limit: v.shared_runner_usage.limit },

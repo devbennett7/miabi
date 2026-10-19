@@ -200,7 +200,7 @@ func IsKnownFlag(name string) bool {
 	return false
 }
 
-// LimitNodeLimit is the entitlement limit key bounding active server nodes.
+// LimitNodeLimit is the entitlement limit key bounding registered nodes; the control plane is not counted.
 const LimitNodeLimit = "node_limit"
 
 // LimitPlanLimit is the entitlement limit key bounding the platform plan catalog.

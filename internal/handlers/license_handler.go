@@ -53,7 +53,7 @@ func NewLicenseHandler(ee enterprise.EE, nodeCount, planCount, storageClassCount
 	}
 }
 
-// NodeUsage reports active nodes against the licensed cap (-1 = unlimited).
+// NodeUsage reports registered nodes, excluding the control plane, against the licensed cap (-1 = unlimited).
 type NodeUsage struct {
 	Used  int64 `json:"used"`
 	Limit int   `json:"limit"`

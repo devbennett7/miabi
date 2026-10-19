@@ -2565,7 +2565,7 @@
       "importedFailed": "Imported {imported}, {failed} failed"
     },
     "nodes": {
-      "communityEditionIsLimitedTo": "Community edition is limited to {value} nodes. Upgrade to Enterprise to add more."
+      "communityEditionIsLimitedTo": "Community edition is limited to {value} nodes besides the control plane. Upgrade to Enterprise to add more."
     },
     "notifications": {
       "channelAdded": "Channel added",
