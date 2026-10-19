@@ -25,10 +25,10 @@ const nodes = ref<Server[]>([])
 const loading = ref(false)
 const agentImage = ref('ghcr.io/miabi-io/agent:latest')
 
-// Edition node cap (-1 = unlimited). Count comes from the live list so it stays
-// accurate after add/remove. Enforced server-side; this just surfaces it.
+// Edition node cap (-1 = unlimited), control plane excluded. Count comes from the live list so it
+// stays accurate after add/remove. Enforced server-side; this just surfaces it.
 const nodeLimit = computed(() => license.view?.node_usage?.limit ?? -1)
-const nodeCount = computed(() => nodes.value.length)
+const nodeCount = computed(() => nodes.value.filter((n) => !n.is_local).length)
 const limited = computed(() => nodeLimit.value >= 0)
 const atNodeLimit = computed(() => limited.value && nodeCount.value >= nodeLimit.value)
 
@@ -316,8 +316,8 @@ function swarmClass(n: Server): string {
         <span v-else-if="outdatedAgents > 0" class="agent-rollup" title="A newer node agent is available">
           <span class="mdi mdi-arrow-up-bold-circle-outline"></span> {{ outdatedAgents }} {{ outdatedAgents === 1 ? 'agent' : 'agents' }} outdated
         </span>
-        <span v-if="limited" class="node-usage" :class="{ 'node-usage--full': atNodeLimit }" :title="atNodeLimit ? 'Node limit reached — upgrade to add more' : 'Nodes used of your edition limit'">
-          <span class="mdi mdi-server"></span> {{ nodeCount }} / {{ nodeLimit }} nodes
+        <span v-if="limited" class="node-usage" :class="{ 'node-usage--full': atNodeLimit }" :title="atNodeLimit ? 'Node limit reached — upgrade to add more' : 'Nodes used of your edition limit (the control plane is not counted)'">
+          <span class="mdi mdi-server"></span> {{ nodeCount }} / {{ nodeLimit }} nodes + control plane
         </span>
         <button class="btn btn-primary" @click="openCreate"><span class="mdi mdi-plus"></span> Add node</button>
       </div>
@@ -421,7 +421,7 @@ function swarmClass(n: Server): string {
                 <div class="app-banner-content">
                   <p class="app-banner-title">Node limit reached</p>
                   <p class="app-banner-text">
-                    Community edition is limited to {{ nodeLimit }} nodes (standalone or Swarm).
+                    Community edition is limited to {{ nodeLimit }} nodes besides the control plane (standalone or Swarm).
                     Upgrade to Enterprise to add more.
                   </p>
                   <router-link to="/admin/license" class="btn btn-secondary btn-sm" style="margin-top: 10px">Upgrade</router-link>

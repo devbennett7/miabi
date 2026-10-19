@@ -366,11 +366,11 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 	directoryService := directory.NewService(ee, userRepo, workspaceRepo, ldapRepo)
 	serverRepo := repositories.NewServerRepository(db)
 	licenseNodeCount := func() int64 {
-		servers, err := serverRepo.List()
+		n, err := serverRepo.CountLicensed()
 		if err != nil {
 			return 0
 		}
-		return int64(len(servers))
+		return n
 	}
 	// Plans / quotas: per-workspace resource limits + capability gates. Enforcement
 	// is off by default (cfg.PlanEnforcement); when off, all checks pass.
@@ -403,11 +403,7 @@ func InitRoutes(app *okapi.Okapi, db *gorm.DB, redisClient *redis.Client, cfg *c
 		time.Duration(cfg.LoginTokenTTLHours)*time.Hour,
 		time.Duration(cfg.LoginTokenMaxTTLHours)*time.Hour,
 	)
-	// Subnet allocator: hands out pool subnets for every managed Docker network so
-	// creation doesn't exhaust Docker's small built-in address pools. Nil-safe —
-	// on a config error the services fall back to Docker's default pool.
-	// Resolved at boot because it depends on the engine; reported to the admin Settings page so an
-	// operator sees why a requested setting is not in force.
+
 	var ipv6Active bool
 	subnetAllocator, err := netalloc.NewService(repositories.NewNetworkAllocationRepository(db), cfg.NetworkPoolCIDR, cfg.NetworkSubnetPrefix)
 	if err != nil {

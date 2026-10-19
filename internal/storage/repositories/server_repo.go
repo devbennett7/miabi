@@ -89,6 +89,14 @@ func (r *ServerRepository) List() ([]models.Server, error) {
 	return servers, err
 }
 
+// CountLicensed counts the nodes that count toward the edition node limit: every node except the
+// control plane's own host, which is always included.
+func (r *ServerRepository) CountLicensed() (int64, error) {
+	var n int64
+	err := r.db.Model(&models.Server{}).Where("is_local = ?", false).Count(&n).Error
+	return n, err
+}
+
 func (r *ServerRepository) FindByID(id uint) (*models.Server, error) {
 	var s models.Server
 	if err := r.db.First(&s, id).Error; err != nil {

@@ -2565,7 +2565,7 @@
       "importedFailed": "{imported} importé(s), {failed} en échec"
     },
     "nodes": {
-      "communityEditionIsLimitedTo": "L’édition Community est limitée à {value} nœuds. Passez à Enterprise pour en ajouter."
+      "communityEditionIsLimitedTo": "L’édition Community est limitée à {value} nœuds en plus du plan de contrôle. Passez à Enterprise pour en ajouter."
     },
     "notifications": {
       "channelAdded": "Canal ajouté",

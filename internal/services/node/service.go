@@ -65,11 +65,11 @@ var (
 type NodeLimitError struct{ Limit int }
 
 func (e *NodeLimitError) Error() string {
-	return fmt.Sprintf("node limit reached: this edition is limited to %d nodes", e.Limit)
+	return fmt.Sprintf("node limit reached: this edition is limited to %d nodes besides the control plane", e.Limit)
 }
 func (e *NodeLimitError) Code() string { return "NODE_LIMIT_REACHED" }
 func (e *NodeLimitError) Message() string {
-	return fmt.Sprintf("This edition is limited to %d nodes. Upgrade to Enterprise to add more.", e.Limit)
+	return fmt.Sprintf("This edition is limited to %d nodes besides the control plane. Upgrade to Enterprise to add more.", e.Limit)
 }
 
 const tokenPrefix = "mbn_"
@@ -163,14 +163,14 @@ func (s *Service) placeInStandaloneCluster(srv *models.Server) error {
 	return err
 }
 
-// SetNodeLimit wires the resolved edition node cap (manager + remotes). The closure is re-evaluated on every
+// SetNodeLimit wires the resolved edition node cap (nodes besides the control plane). The closure is re-evaluated on every
 // node registration, so a license install or lapse takes effect without a restart. A nil closure or a
 // negative return means unlimited.
 func (s *Service) SetNodeLimit(fn func() int) { s.nodeLimit = fn }
 
 // checkNodeLimit refuses a new node registration once the edition cap is reached. Already-registered nodes
-// keep operating; only adding the next node is blocked. Counts every server row (manager + remotes),
-// matching the node-usage metric shown in the license view.
+// keep operating; only adding the next node is blocked. The control-plane host is not counted, matching
+// the node-usage metric shown in the license view.
 func (s *Service) checkNodeLimit() error {
 	if s.nodeLimit == nil {
 		return nil
@@ -179,11 +179,11 @@ func (s *Service) checkNodeLimit() error {
 	if limit < 0 {
 		return nil
 	}
-	servers, err := s.repo.List()
+	n, err := s.repo.CountLicensed()
 	if err != nil {
 		return err
 	}
-	if len(servers) >= limit {
+	if n >= int64(limit) {
 		return &NodeLimitError{Limit: limit}
 	}
 	return nil
